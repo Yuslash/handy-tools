@@ -161,6 +161,15 @@ app.on('activate', () => {
 app.whenReady().then(() => {
   ipcMain.on('minimize', () => win?.minimize())
   ipcMain.on('close', () => win?.close())
+  ipcMain.on('open-downloads', () => {
+    // Open the user's downloads folder 
+    // Note: The python backend defaults to Path.home() / "Downloads"
+    // We can assume this standard location or generic downloads path
+    const downloadsPath = app.getPath('downloads')
+    import('electron').then(({ shell }) => {
+      shell.openPath(downloadsPath)
+    })
+  })
 
   startPythonBackend()
   createWindow()
