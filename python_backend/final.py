@@ -251,7 +251,7 @@ def download_video_ytdlp(url, quality=None, output_dir=None):
         if quality:
             ydl_opts['format'] = quality
         else:
-            ydl_opts['format'] = 'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
     
     print(f"\n📥 Starting download...")
     print(f"📁 Output directory: {output_dir}")
