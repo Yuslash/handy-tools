@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Video, Camera, ArrowRight, Zap, Clock, Disc, Globe } from 'lucide-react'
+import { Video, Camera, ArrowRight, Zap, Clock, Disc, Globe, Scissors, Activity } from 'lucide-react'
 import { Widget } from '../components/Widget'
 import { InteractiveGrid } from '../components/InteractiveGrid'
 import { VideoDownloader } from './VideoDownloader'
 import { ScrollingScreenshot } from './ScrollingScreenshot'
+import { ClipDownloader } from './ClipDownloader'
+import { VideoQuality } from './VideoQuality'
 import { Titlebar } from '../components/Titlebar'
 
 export function Home() {
@@ -31,7 +33,7 @@ export function Home() {
             <div className={`w-full max-w-6xl z-10 transition-all duration-700 flex flex-col items-center justify-center h-full ${activeTool ? 'scale-95 opacity-0 blur-sm pointer-events-none' : 'scale-100 opacity-100 blur-0'}`}>
 
                 {/* Header with Clock */}
-                <div className="mb-16 text-center space-y-6">
+                <div className="mb-12 text-center space-y-6">
                     <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-zinc-400 text-xs font-mono tracking-widest uppercase mb-4 shadow-2xl">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#ccff00] animate-pulse" />
                         SYSTEM ONLINE
@@ -46,7 +48,7 @@ export function Home() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full px-8 max-w-4xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full px-8 max-w-5xl">
                     {/* Video Downloader Card */}
                     <div
                         onClick={() => setActiveTool('video')}
@@ -61,12 +63,36 @@ export function Home() {
                                 <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:bg-[#ccff00] transition-colors duration-300">
                                     <Video size={20} className="text-zinc-400 group-hover:text-black transition-colors" />
                                 </div>
-                                <h2 className="text-2xl font-bold text-white mb-2 tracking-tight group-hover:text-[#ccff00] transition-colors">Media Downloader</h2>
-                                <p className="text-zinc-500 text-sm leading-relaxed max-w-[90%]">Extract high-fidelity video and audio streams from any supported platform.</p>
+                                <h2 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-[#ccff00] transition-colors">Media Downloader</h2>
+                                <p className="text-zinc-500 text-xs leading-relaxed">Extract high-fidelity streams from any supported platform.</p>
                             </div>
 
-                            <div className="flex items-center gap-2 text-zinc-500 text-xs font-mono uppercase tracking-widest group-hover:text-white transition-colors mt-4">
-                                Initialize Module <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                            <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase tracking-widest group-hover:text-white transition-colors mt-4">
+                                Initialize <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Clip Downloader Card */}
+                    <div
+                        onClick={() => setActiveTool('clip')}
+                        className="glass-panel group cursor-pointer relative overflow-hidden p-8 flex flex-col h-64 rounded-xl hover:border-pink-500/50 transition-all duration-500"
+                    >
+                        <div className="absolute -right-8 -bottom-8 opacity-[0.03] group-hover:opacity-[0.1] transition-all duration-700 transform group-hover:scale-110 group-hover:rotate-12">
+                            <Scissors size={200} />
+                        </div>
+
+                        <div className="z-10 relative flex-1 flex flex-col">
+                            <div className="mb-auto">
+                                <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:bg-pink-500 transition-colors duration-300">
+                                    <Scissors size={20} className="text-zinc-400 group-hover:text-white transition-colors" />
+                                </div>
+                                <h2 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-pink-500 transition-colors">Clip Extractor</h2>
+                                <p className="text-zinc-500 text-xs leading-relaxed">Download original quality 4K clips directly.</p>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase tracking-widest group-hover:text-white transition-colors mt-4">
+                                Initialize <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
                             </div>
                         </div>
                     </div>
@@ -85,12 +111,36 @@ export function Home() {
                                 <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:bg-cyan-400 transition-colors duration-300">
                                     <Camera size={20} className="text-zinc-400 group-hover:text-black transition-colors" />
                                 </div>
-                                <h2 className="text-2xl font-bold text-white mb-2 tracking-tight group-hover:text-cyan-400 transition-colors">Web Capture</h2>
-                                <p className="text-zinc-500 text-sm leading-relaxed max-w-[90%]">Generate pixel-perfect scrolling screenshots of full webpages.</p>
+                                <h2 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-cyan-400 transition-colors">Web Capture</h2>
+                                <p className="text-zinc-500 text-xs leading-relaxed">Generate scrolling screenshots of full webpages.</p>
                             </div>
 
-                            <div className="flex items-center gap-2 text-zinc-500 text-xs font-mono uppercase tracking-widest group-hover:text-white transition-colors mt-4">
-                                Initialize Module <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                            <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase tracking-widest group-hover:text-white transition-colors mt-4">
+                                Initialize <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Video Quality Card */}
+                    <div
+                        onClick={() => setActiveTool('quality')}
+                        className="glass-panel group cursor-pointer relative overflow-hidden p-8 flex flex-col h-64 rounded-xl hover:border-orange-500/50 transition-all duration-500"
+                    >
+                        <div className="absolute -right-8 -bottom-8 opacity-[0.03] group-hover:opacity-[0.1] transition-all duration-700 transform group-hover:scale-110 group-hover:rotate-12">
+                            <Activity size={200} />
+                        </div>
+
+                        <div className="z-10 relative flex-1 flex flex-col">
+                            <div className="mb-auto">
+                                <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:bg-orange-500 transition-colors duration-300">
+                                    <Activity size={20} className="text-zinc-400 group-hover:text-white transition-colors" />
+                                </div>
+                                <h2 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-orange-500 transition-colors">Quality Inspector</h2>
+                                <p className="text-zinc-500 text-xs leading-relaxed">Analyze video files for true native resolution / 4K.</p>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase tracking-widest group-hover:text-white transition-colors mt-4">
+                                Initialize <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
                             </div>
                         </div>
                     </div>
@@ -98,7 +148,7 @@ export function Home() {
 
                 {/* Footer Info */}
                 <div className="mt-16 flex items-center gap-6 text-[10px] text-zinc-600 font-mono tracking-widest uppercase">
-                    <span>v2.0.0-alpha</span>
+                    <span>v2.1.0-beta</span>
                     <span className="w-1 h-1 rounded-full bg-zinc-800" />
                     <span>Local Environment</span>
                     <span className="w-1 h-1 rounded-full bg-zinc-800" />
@@ -124,6 +174,16 @@ export function Home() {
                             </Widget>
                         )}
 
+                        {activeTool === 'clip' && (
+                            <Widget
+                                title="Clip Extractor"
+                                onClose={() => setActiveTool(null)}
+                                width="w-[600px]"
+                            >
+                                <ClipDownloader embedded />
+                            </Widget>
+                        )}
+
                         {activeTool === 'screenshot' && (
                             <Widget
                                 title="Web Capture"
@@ -131,6 +191,16 @@ export function Home() {
                                 width="w-[700px]"
                             >
                                 <ScrollingScreenshot embedded />
+                            </Widget>
+                        )}
+
+                        {activeTool === 'quality' && (
+                            <Widget
+                                title="Quality Inspector"
+                                onClose={() => setActiveTool(null)}
+                                width="w-[700px]"
+                            >
+                                <VideoQuality embedded />
                             </Widget>
                         )}
                     </div>

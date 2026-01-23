@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { spawn, ChildProcess, execSync } from 'node:child_process'
+import fs from 'node:fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -19,6 +20,78 @@ let pythonProcess: ChildProcess | null = null
 
 function log(msg: string) {
   console.log(`[Electron Main] ${msg}`)
+}
+
+function findGitRoot(startPath: string): string | null {
+  let currentDir = startPath
+  while (true) {
+    if (fs.existsSync(path.join(currentDir, '.git'))) {
+      return currentDir
+    }
+    const parentDir = path.dirname(currentDir)
+    if (parentDir === currentDir) {
+      // Reached root
+      return null
+    }
+    currentDir = parentDir
+  }
+}
+
+function checkForUpdates(): boolean {
+  if (!app.isPackaged) {
+    log('Skipping update check in dev mode')
+    return false
+  }
+
+  // Find git root starting from executable location
+  // In packaged app, exe is in root or dist/win-unpacked
+  const startPath = path.dirname(app.getPath('exe'))
+  const gitRoot = findGitRoot(startPath)
+
+  if (!gitRoot) {
+    log('No .git directory found in parent hierarchy, skipping update check')
+    return false
+  }
+
+  try {
+    log(`Checking for updates in ${gitRoot}...`)
+    // Configure git to not ask for credentials to avoid hanging
+    const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+
+    // Fetch latest from remote
+    execSync('git fetch origin main', {
+      cwd: gitRoot,
+      env: gitEnv,
+      encoding: 'utf-8',
+      timeout: 15000
+    })
+
+    const localHead = execSync('git rev-parse HEAD', { cwd: gitRoot, encoding: 'utf-8' }).trim()
+    const remoteHead = execSync('git rev-parse origin/main', { cwd: gitRoot, encoding: 'utf-8' }).trim()
+
+    if (localHead !== remoteHead) {
+      log(`Update found! Local: ${localHead}, Remote: ${remoteHead}. Updating...`)
+
+      // Hard reset to latest remote
+      execSync('git reset --hard origin/main', {
+        cwd: gitRoot,
+        encoding: 'utf-8'
+      })
+
+      log('Update applied successfully. Restarting application...')
+
+      // Relaunch and quit
+      app.relaunch()
+      app.quit()
+      return true
+    } else {
+      log('Application is up to date.')
+      return false
+    }
+  } catch (error) {
+    console.error('Failed to check for updates:', error)
+    return false
+  }
 }
 
 // Kill any existing process on port 8000
@@ -67,7 +140,7 @@ function startPythonBackend() {
       executable = path.join(process.resourcesPath, 'backend.exe')
     } else {
       executable = 'python'
-      args = [path.join(process.env.APP_ROOT, 'python_backend', 'main.py')]
+      args = [path.join(process.env.APP_ROOT, 'python_backend', 'app', 'api', 'server.py')]
     }
 
     log(`Starting Python backend from ${executable}`)
@@ -171,6 +244,42 @@ app.whenReady().then(() => {
     })
   })
 
-  startPythonBackend()
-  createWindow()
+  ipcMain.handle('select-directory', async () => {
+    const { dialog } = await import('electron')
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openDirectory'],
+      title: 'Select Download Location',
+      buttonLabel: 'Select Folder'
+    })
+
+    if (result.canceled) {
+      return null
+    } else {
+      return result.filePaths[0]
+    }
+  })
+
+  ipcMain.handle('select-file', async () => {
+    const { dialog } = await import('electron')
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openFile'],
+      title: 'Select Video File',
+      filters: [
+        { name: 'Videos', extensions: ['mp4', 'mkv', 'avi', 'mov', 'webm'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled) {
+      return null
+    } else {
+      return result.filePaths[0]
+    }
+  })
+
+  // Check for updates before doing anything else
+  if (!checkForUpdates()) {
+    startPythonBackend()
+    createWindow()
+  }
 })

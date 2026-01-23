@@ -1,9 +1,9 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "YourAppID",
+  "appId": "com.yuslash.handytools",
   "asar": true,
-  "productName": "YourAppName",
+  "productName": "HandyTools",
   "directories": {
     "output": "release/${version}"
   },
@@ -32,6 +32,7 @@
         ]
       }
     ],
+    "icon": "public/icon.png",
     "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
   },
   "nsis": {

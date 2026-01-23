@@ -2,27 +2,46 @@ import sys
 import os
 import io
 import subprocess
+import json
+import asyncio
+import threading
+import queue
+from pathlib import Path
+
+from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+# Adjust path to allow imports if run directly
+# Assuming we are running from python_backend root or python_backend/app/api
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+try:
+    from app.core import downloader as backend
+    from app.core.utils import check_ffmpeg
+    from app.schemas import UrlRequest, DownloadRequest
+except ImportError:
+    # If we are running relative to python_backend
+    try:
+        from python_backend.app.core import downloader as backend
+        from python_backend.app.core.utils import check_ffmpeg
+        from python_backend.app.schemas import UrlRequest, DownloadRequest
+    except ImportError:
+        # Fallback if things are messy
+        print("Error importing app modules. Ensure you are running from the correct directory.")
+        backend = None
+        check_ffmpeg = lambda: False
+        UrlRequest = None
+        DownloadRequest = None
+        # This will likely crash later if not fixed, but let's proceed to define the app
 
 # Force UTF-8 encoding for stdout/stderr to handle emojis/unicode on Windows
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-
-from fastapi import FastAPI, WebSocket, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import asyncio
-import json
-
-# Add current directory to path so we can import final.py
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-# Import logic from final.py
-try:
-    import final as backend
-except ImportError:
-    print("Error importing final.py")
-    backend = None
 
 app = FastAPI()
 
@@ -35,26 +54,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def check_ffmpeg():
-    """Check if FFmpeg is available in PATH"""
+try:
+    from app.api.video_quality import router as quality_router
+    app.include_router(quality_router, prefix="/api")
+except ImportError as e:
+    print(f"Error importing quality router: {e}")
+    # Fallback for relative run
     try:
-        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
-        return result.returncode == 0
-    except:
-        return False
+        from python_backend.app.api.video_quality import router as quality_router
+        app.include_router(quality_router, prefix="/api")
+    except ImportError:
+        pass
 
 # Check FFmpeg at startup
 FFMPEG_AVAILABLE = check_ffmpeg()
 print(f"[Startup] FFmpeg available: {FFMPEG_AVAILABLE}")
-
-class UrlRequest(BaseModel):
-    url: str
-
-class DownloadRequest(BaseModel):
-    url: str
-    format_id: str
-    output_dir: str = None
-    audio_only: bool = False
 
 @app.get("/")
 async def read_root():
@@ -97,20 +111,22 @@ async def websocket_endpoint(websocket: WebSocket):
                 url = message.get("url")
                 format_id = message.get("format_id")
                 audio_only = message.get("audio_only", False)
-                await run_download_with_events(url, format_id, audio_only, websocket)
+                output_dir = message.get("output_dir", None)
+                await run_download_with_events(url, format_id, audio_only, websocket, output_dir)
                 
     except Exception as e:
         print(f"[WS] Error: {e}")
 
-async def run_download_with_events(url, format_id, audio_only, websocket):
+async def run_download_with_events(url, format_id, audio_only, websocket, output_dir=None):
     import yt_dlp
-    import queue
-    import threading
     
     progress_queue = queue.Queue()
     
     def progress_hook(d):
-        status = d.get('status', '')
+        # Debug: Print all keys and status to see what's happening
+        status = d.get('status', 'unknown')
+        # print(f"[Debug Hook] Status: {status} | Keys: {list(d.keys())}")
+        
         if status == 'downloading':
             percent_str = d.get('_percent_str', '0%').strip()
             speed_str = d.get('_speed_str', 'N/A')
@@ -129,15 +145,47 @@ async def run_download_with_events(url, format_id, audio_only, websocket):
     await websocket.send_json({"type": "info", "message": "Download started..."})
     print("[WS] Sent download started info")
     
-    # Build yt-dlp options
-    from pathlib import Path
-    import time
-    output_dir = os.path.join(Path.home(), "Downloads")
+    # Clip Logic: Detect and optimize for 4K
+    download_ranges = None
+    if "/clip/" in url:
+        await websocket.send_json({"type": "info", "message": "Analyzing Clip metadata..."})
+        try:
+            def get_clip_info():
+                with yt_dlp.YoutubeDL({'quiet': True, 'ignoreerrors': True}) as ydl_temp:
+                    return ydl_temp.extract_info(url, download=False)
+            
+            clip_info = await asyncio.to_thread(get_clip_info)
+            
+            if clip_info:
+                # Extract timestamps and video ID
+                s_start = clip_info.get('start_time') or clip_info.get('section_start')
+                s_end = clip_info.get('end_time') or clip_info.get('section_end')
+                
+                v_id = clip_info.get('video_id')
+                if not v_id:
+                     # Parse from original_url if available
+                     orig_url = clip_info.get('original_url')
+                     if orig_url and 'v=' in orig_url:
+                         v_id = orig_url.split('v=')[1].split('&')[0]
+                     elif clip_info.get('webpage_url_domain') == 'youtube.com':
+                         pass
+                
+                # If we have valid ranges, switch to main video for better quality
+                if s_start is not None and s_end is not None and v_id:
+                    print(f"[Clip] Found range: {s_start}-{s_end} for Video ID: {v_id}")
+                    # Switch to main video URL
+                    url = f"https://www.youtube.com/watch?v={v_id}"
+                    download_ranges = [(s_start, s_end)]
+                    await websocket.send_json({"type": "info", "message": f"Detected 4K Clip. Downloading range {s_start}-{s_end}s from main video"})
+        except Exception as e:
+            print(f"[Clip] Extraction failed: {e}")
+
+    if not output_dir:
+        output_dir = os.path.join(Path.home(), "Downloads")
+        
     os.makedirs(output_dir, exist_ok=True)
     
-    # Use timestamp in filename to ensure uniqueness and avoid file locking errors (User Request: filename1, 2, 3 style, but timestamp is safer/easier)
-    # Actually, to strictly follow "filename1, 2..." we'd need complex logic. Timestamp is a robust "unique" approach.
-    # Let's add a small random hash or timestamp to guarantee it.
+    # Use timestamp in filename
     ydl_opts = {
         'outtmpl': os.path.join(output_dir, '%(title)s_%(epoch)s.%(ext)s'),
         'progress_hooks': [progress_hook],
@@ -145,6 +193,14 @@ async def run_download_with_events(url, format_id, audio_only, websocket):
         'no_warnings': True,
         'noprogress': False,
     }
+    
+    # Apply download ranges if this is a clip
+    if download_ranges:
+        ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, download_ranges)
+        # Force 4K selection for clips if not audio-only
+        if not audio_only and FFMPEG_AVAILABLE:
+            ydl_opts['format'] = 'bestvideo[height>=2160]+bestaudio/bestvideo+bestaudio/best'
+            print("[Clip] Enforcing 4K format selection")
     
     # Handle audio-only downloads
     if audio_only:
@@ -165,12 +221,6 @@ async def run_download_with_events(url, format_id, audio_only, websocket):
             if format_id and format_id != 'bestvideo+bestaudio/best':
                 ydl_opts['format'] = f'{format_id}+bestaudio[acodec^=mp4a]/{format_id}+bestaudio/bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best'
             else:
-                # Prioritize H.264 (AVC) and AAC (M4A) for maximum compatibility on Windows
-                # format string explanation:
-                # 1. Best H.264 video + Best AAC audio
-                # 2. Best MP4 video + Best M4A audio
-                # 3. Best video + Best audio (fallback)
-                # 4. Best single file (fallback)
                 ydl_opts['format'] = 'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
             ydl_opts['merge_output_format'] = 'mp4'
         else:
@@ -208,29 +258,18 @@ async def run_download_with_events(url, format_id, audio_only, websocket):
             
             if msg.get("type") == "progress":
                 try:
-                    # Convert to float to check monotonicity
-                    # percent comes as "12.3%" or " 12.3"
                     p_str = msg.get("percent", "0").replace('%', '').strip()
                     p_val = float(p_str)
-                    
-                    # Prevent backward jumps (ignored if it restarts at 0 for a new fragment, 
-                    # but typically we want to avoid 40% -> 39% jitters)
-                    # However, yt-dlp might reset to 0 for audio download after video.
-                    # Simple heuristic: if difference is huge (like 100 -> 0), allow it (new stage).
-                    # If difference is small and negative (45.5 -> 45.4), ignore it.
                     
                     if p_val >= last_percent_val or (last_percent_val > 90 and p_val < 10):
                         last_percent_val = p_val
                         await websocket.send_json(msg)
-                        print(f"[WS] Sent progress: {msg}")
                     else:
-                        print(f"[WS] Skipped regressive progress: {p_val}% (was {last_percent_val}%)")
+                        pass # Skip regressive progress
                 except ValueError:
-                    # If parse fails, just send it
                     await websocket.send_json(msg)
             else:
                 await websocket.send_json(msg)
-                print(f"[WS] Sent: {msg}")
             
             if msg.get("type") in ["complete", "error"]:
                 break

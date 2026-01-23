@@ -37,3 +37,12 @@ python_backend/dist
 venv
 ENV
 env
+
+# Python Backend Specifics
+python_backend/downloads/
+python_backend/test_imports.py
+python_backend/venv/
+*.mp4
+*.mkv
+*.webm
+*.avi

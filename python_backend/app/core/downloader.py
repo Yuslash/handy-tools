@@ -1,127 +1,27 @@
-import sys
 import os
-import re
-import json
 import platform
-import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
-import time
 
-# Try to import yt-dlp
-YT_DLP_AVAILABLE = False
-yt_dlp = None
-
+# Try to import yt_dlp, but don't fail immediately if not found
+# The check_and_install_yt_dlp function should be called before using this module's functions
 try:
     import yt_dlp
-    YT_DLP_AVAILABLE = True
 except ImportError:
-    YT_DLP_AVAILABLE = False
+    yt_dlp = None
 
-
-def check_ffmpeg():
-    """Check if ffmpeg is available"""
-    try:
-        result = subprocess.run(['ffmpeg', '-version'], 
-                              capture_output=True, text=True)
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.SubprocessError):
-        return False
-
-
-def check_and_install_yt_dlp():
-    """Check if yt-dlp is available, install if not"""
-    global YT_DLP_AVAILABLE, yt_dlp
-    
-    if YT_DLP_AVAILABLE:
-        try:
-            print(f"✅ yt-dlp {yt_dlp.version.__version__} available")
-            return True
-        except:
-            pass
-    
-    print("❌ yt-dlp not found. Installing...")
-    try:
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "yt-dlp", "--upgrade", "--quiet"])
-        print("✅ yt-dlp installed successfully")
-        
-        # Try importing again
-        try:
-            import yt_dlp
-            yt_dlp = yt_dlp
-            YT_DLP_AVAILABLE = True
-            return True
-        except:
-            YT_DLP_AVAILABLE = False
-            return False
-    except Exception as e:
-        print(f"❌ Failed to install yt-dlp: {e}")
-        print("   Please install manually: pip install yt-dlp")
-        return False
-
-
-def install_ffmpeg_windows():
-    """Guide user to install ffmpeg on Windows"""
-    print("\n🔧 FFmpeg is required for merging video and audio streams")
-    print("=" * 60)
-    print("To install ffmpeg on Windows:")
-    print("1. Download from: https://www.gyan.dev/ffmpeg/builds/")
-    print("2. Choose 'ffmpeg-release-full.7z'")
-    print("3. Extract to C:\\ffmpeg")
-    print("4. Add C:\\ffmpeg\\bin to your PATH")
-    print("\nOr use winget (Windows 10/11):")
-    print("   winget install Gyan.FFmpeg")
-    print("\nWithout ffmpeg, downloads may be video-only or audio-only")
-    print("=" * 60)
-    
-    choice = input("\nContinue without ffmpeg? (y/n): ").strip().lower()
-    return choice == 'y'
-
-
-class MyLogger:
-    """Custom logger for yt-dlp"""
-    def debug(self, msg):
-        if msg.startswith('[debug]'):
-            pass
-        elif 'Downloading' in msg or 'destination' in msg or 'Merging' in msg:
-            print(f"   {msg}")
-    
-    def info(self, msg):
-        if msg and not msg.startswith('[debug]'):
-            print(f"   {msg}")
-    
-    def warning(self, msg):
-        if "ffmpeg" not in msg.lower():  # Filter ffmpeg warnings
-            print(f"⚠️  {msg}")
-    
-    def error(self, msg):
-        print(f"❌ {msg}")
-
-
-def progress_hook(d):
-    """Progress hook for yt-dlp"""
-    if d['status'] == 'downloading':
-        if '_percent_str' in d:
-            percent = d['_percent_str']
-            speed = d.get('_speed_str', 'N/A')
-            eta = d.get('_eta_str', 'N/A')
-            print(f"\r   {percent} at {speed} ETA: {eta}", end='', flush=True)
-    elif d['status'] == 'finished':
-        print(f"\n✅ Download completed")
-        if 'filename' in d:
-            filename = os.path.basename(d['filename'])
-            if len(filename) > 40:
-                filename = filename[:37] + "..."
-            print(f"   Saved as: {filename}")
-    elif d['status'] == 'error':
-        print(f"\n❌ Error during download")
-
+from .utils import check_ffmpeg, format_size, install_ffmpeg_windows, check_and_install_yt_dlp
+from .logger import MyLogger
 
 def get_video_info(url):
     """Get video information using yt-dlp Python API"""
-    if not YT_DLP_AVAILABLE:
-        return None
+    global yt_dlp
+    if yt_dlp is None:
+        # One last check in case it was installed dynamically
+        try:
+            import yt_dlp as ydl_lib
+            yt_dlp = ydl_lib
+        except ImportError:
+            return None
     
     ydl_opts = {
         'quiet': True,
@@ -197,24 +97,35 @@ def list_available_formats(info):
     
     return formats
 
-
-def format_size(size_bytes):
-    """Format file size in human readable format"""
-    if not size_bytes or size_bytes == 0:
-        return "Unknown"
-    
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.2f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.2f} TB"
+def progress_hook(d):
+    """Progress hook for yt-dlp"""
+    if d['status'] == 'downloading':
+        if '_percent_str' in d:
+            percent = d['_percent_str']
+            speed = d.get('_speed_str', 'N/A')
+            eta = d.get('_eta_str', 'N/A')
+            print(f"\r   {percent} at {speed} ETA: {eta}", end='', flush=True)
+    elif d['status'] == 'finished':
+        print(f"\n✅ Download completed")
+        if 'filename' in d:
+            filename = os.path.basename(d['filename'])
+            if len(filename) > 40:
+                filename = filename[:37] + "..."
+            print(f"   Saved as: {filename}")
+    elif d['status'] == 'error':
+        print(f"\n❌ Error during download")
 
 
 def download_video_ytdlp(url, quality=None, output_dir=None):
     """Download video using yt-dlp Python API"""
-    if not YT_DLP_AVAILABLE:
-        print("❌ yt-dlp is not available")
-        return False
+    global yt_dlp
+    if yt_dlp is None:
+        try:
+             import yt_dlp as ydl_lib
+             yt_dlp = ydl_lib
+        except ImportError:
+            print("❌ yt-dlp is not available")
+            return False
     
     if output_dir is None:
         output_dir = os.path.join(Path.home(), "Downloads")
@@ -294,9 +205,14 @@ def download_video_ytdlp(url, quality=None, output_dir=None):
 
 def simple_download(url, output_dir=None):
     """Simple download without format selection for quick use"""
-    if not YT_DLP_AVAILABLE:
-        print("❌ yt-dlp is not available")
-        return False
+    global yt_dlp
+    if yt_dlp is None:
+        try:
+             import yt_dlp as ydl_lib
+             yt_dlp = ydl_lib
+        except ImportError:
+            print("❌ yt-dlp is not available")
+            return False
     
     if output_dir is None:
         output_dir = os.path.join(Path.home(), "Downloads")
@@ -466,73 +382,3 @@ def interactive_download(url):
         except ValueError:
             # Not a number, treat as format ID
             return download_video_ytdlp(url, quality=choice)
-
-
-def main():
-    """Main function"""
-    print("🎬 Universal Video Downloader")
-    print("=" * 50)
-    print("Powered by yt-dlp")
-    print("Supports: YouTube, Twitter/X, Instagram, TikTok, etc.")
-    print("=" * 50)
-    
-    # Check if yt-dlp is available
-    if not check_and_install_yt_dlp():
-        print("❌ Cannot proceed without yt-dlp. Please install it manually:")
-        print("   pip install yt-dlp")
-        return
-    
-    # Check command line arguments
-    if len(sys.argv) < 2:
-        print("\nUsage:")
-        print("  python final.py <URL>                    - Download video")
-        print("  python final.py --simple <URL>          - Simple download (no format selection)")
-        print("  python final.py --ffmpeg                - Show ffmpeg installation help")
-        print("\nExamples:")
-        print("  python final.py https://x.com/user/status/1234567890")
-        print("  python final.py --simple https://x.com/user/status/1234567890")
-        
-        # Interactive mode
-        print("\nEnter a URL (or press Enter to exit):")
-        url = input("> ").strip()
-        if url:
-            # Fix x.com to twitter.com
-            if "x.com" in url:
-                url = url.replace("x.com", "twitter.com")
-            interactive_download(url)
-        return
-    
-    # Handle command line arguments
-    arg = sys.argv[1]
-    
-    if arg == '--simple':
-        if len(sys.argv) >= 3:
-            url = sys.argv[2]
-            if "x.com" in url:
-                url = url.replace("x.com", "twitter.com")
-            simple_download(url)
-        else:
-            print("❌ Please specify a URL: python final.py --simple <URL>")
-    
-    elif arg == '--ffmpeg':
-        install_ffmpeg_windows()
-    
-    else:
-        # Single URL download
-        url = arg
-        
-        # Fix x.com to twitter.com for better compatibility
-        if "x.com" in url:
-            url = url.replace("x.com", "twitter.com")
-        
-        print(f"📝 Processing URL: {url}")
-        interactive_download(url)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Program interrupted by user")
-    except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
