@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, FileVideo, Activity, Gauge, AlertTriangle, CheckCircle } from 'lucide-react'
+import { ArrowLeft, FileVideo, Activity, AlertTriangle, CheckCircle } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 
 interface QualityResult {

@@ -8,7 +8,7 @@ import threading
 import queue
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi import FastAPI, WebSocket, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -21,19 +21,20 @@ if parent_dir not in sys.path:
 
 try:
     from app.core import downloader as backend
-    from app.core.utils import check_ffmpeg
+    from app.core.utils import check_ffmpeg, parse_time_to_seconds
     from app.schemas import UrlRequest, DownloadRequest
 except ImportError:
     # If we are running relative to python_backend
     try:
         from python_backend.app.core import downloader as backend
-        from python_backend.app.core.utils import check_ffmpeg
+        from python_backend.app.core.utils import check_ffmpeg, parse_time_to_seconds
         from python_backend.app.schemas import UrlRequest, DownloadRequest
     except ImportError:
         # Fallback if things are messy
         print("Error importing app modules. Ensure you are running from the correct directory.")
         backend = None
         check_ffmpeg = lambda: False
+        parse_time_to_seconds = lambda x: None
         UrlRequest = None
         DownloadRequest = None
         # This will likely crash later if not fixed, but let's proceed to define the app
@@ -54,6 +55,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 try:
     from app.api.video_quality import router as quality_router
     app.include_router(quality_router, prefix="/api")
@@ -63,6 +65,18 @@ except ImportError as e:
     try:
         from python_backend.app.api.video_quality import router as quality_router
         app.include_router(quality_router, prefix="/api")
+    except ImportError:
+        pass
+
+try:
+    from app.api.gif_converter import router as gif_router
+    app.include_router(gif_router, prefix="/api")
+except ImportError as e:
+    print(f"Error importing gif router: {e}")
+    # Fallback for relative run
+    try:
+        from python_backend.app.api.gif_converter import router as gif_router
+        app.include_router(gif_router, prefix="/api")
     except ImportError:
         pass
 
@@ -112,12 +126,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 format_id = message.get("format_id")
                 audio_only = message.get("audio_only", False)
                 output_dir = message.get("output_dir", None)
-                await run_download_with_events(url, format_id, audio_only, websocket, output_dir)
+                start_time = message.get("start_time", None)
+                end_time = message.get("end_time", None)
+                await run_download_with_events(url, format_id, audio_only, websocket, output_dir, start_time, end_time)
                 
     except Exception as e:
         print(f"[WS] Error: {e}")
 
-async def run_download_with_events(url, format_id, audio_only, websocket, output_dir=None):
+async def run_download_with_events(url, format_id, audio_only, websocket, output_dir=None, start_time=None, end_time=None):
     import yt_dlp
     
     progress_queue = queue.Queue()
@@ -179,6 +195,20 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
                     await websocket.send_json({"type": "info", "message": f"Detected 4K Clip. Downloading range {s_start}-{s_end}s from main video"})
         except Exception as e:
             print(f"[Clip] Extraction failed: {e}")
+            
+    # Interactive Range Logic (overrides clip logic if provided)
+    if start_time and end_time:
+        s_sec = parse_time_to_seconds(start_time)
+        e_sec = parse_time_to_seconds(end_time)
+        
+        if s_sec is not None and e_sec is not None:
+             if e_sec > s_sec:
+                 download_ranges = [(s_sec, e_sec)]
+                 print(f"[Range] Custom range: {s_sec}-{e_sec}s")
+                 await websocket.send_json({"type": "info", "message": f"Downloading Custom Range: {s_sec}s - {e_sec}s"})
+             else:
+                 await websocket.send_json({"type": "error", "message": "Start time must be less than end time"})
+                 return
 
     if not output_dir:
         output_dir = os.path.join(Path.home(), "Downloads")
@@ -199,8 +229,13 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
         ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, download_ranges)
         # Force 4K selection for clips if not audio-only
         if not audio_only and FFMPEG_AVAILABLE:
+            # Match user's working script configuration exactly
             ydl_opts['format'] = 'bestvideo[height>=2160]+bestaudio/bestvideo+bestaudio/best'
-            print("[Clip] Enforcing 4K format selection")
+            ydl_opts['force_keyframes_at_cuts'] = False
+            # Remove explicit merge format to let yt-dlp choose optimal container
+            # Enforce MP4 merge specifically for clips to ensure audio is widely compatible
+            ydl_opts['merge_output_format'] = 'mp4'
+            print("[Clip] Using proven working configuration (MP4 merge, no forced keyframes)")
     
     # Handle audio-only downloads
     if audio_only:
@@ -218,10 +253,13 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
     else:
         # Video download
         if FFMPEG_AVAILABLE:
-            if format_id and format_id != 'bestvideo+bestaudio/best':
-                ydl_opts['format'] = f'{format_id}+bestaudio[acodec^=mp4a]/{format_id}+bestaudio/bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best'
-            else:
-                ydl_opts['format'] = 'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+            # If we set a specific format for ranges/clips, don't overwrite it unless necessary
+            if not download_ranges:
+                if format_id and format_id != 'bestvideo+bestaudio/best':
+                    ydl_opts['format'] = f'{format_id}+bestaudio[acodec^=mp4a]/{format_id}+bestaudio/bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best'
+                else:
+                    ydl_opts['format'] = 'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+            
             ydl_opts['merge_output_format'] = 'mp4'
         else:
             # Without FFmpeg, prefer pre-merged formats

@@ -22,7 +22,7 @@ def download_clip_as_range():
 
     ydl_opts = {
         'format': 'bestvideo[height>=2160]+bestaudio/bestvideo+bestaudio/best',
-        'outtmpl': os.path.join(output_dir, 'Wuthering_Waves_Clip_4K.%(ext)s'),
+        'outtmpl': os.path.join(output_dir, 'wuwa-test.%(ext)s'),
         'verbose': True,
         # Use simple download ranges on the main video
         'download_ranges': yt_dlp.utils.download_range_func(None, [(start_time, end_time)]),

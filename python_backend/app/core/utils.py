@@ -82,3 +82,31 @@ def format_size(size_bytes):
             return f"{size_bytes:.2f} {unit}"
         size_bytes /= 1024.0
     return f"{size_bytes:.2f} TB"
+
+def parse_time_to_seconds(time_str):
+    """
+    Converts a time string in format 'HH:MM:SS', 'MM:SS', or 'SS' to total seconds.
+    """
+    if not time_str:
+        return None
+        
+    try:
+        # If it's already a number (string or float), return it
+        try:
+            val = float(time_str)
+            return val
+        except ValueError:
+            pass
+            
+        parts = list(map(float, time_str.strip().split(':')))
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        elif len(parts) == 1:
+            return parts[0]
+        else:
+            return None
+    except Exception as e:
+        print(f"Error parsing time '{time_str}': {e}")
+        return None

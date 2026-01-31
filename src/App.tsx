@@ -4,6 +4,7 @@ import { VideoDownloader } from './pages/VideoDownloader'
 import { ClipDownloader } from './pages/ClipDownloader'
 import { ScrollingScreenshot } from './pages/ScrollingScreenshot'
 import { VideoQuality } from './pages/VideoQuality'
+import { InteractiveClip } from './pages/InteractiveClip'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/clip-downloader" element={<ClipDownloader />} />
             <Route path="/scrolling-screenshot" element={<ScrollingScreenshot />} />
             <Route path="/video-quality" element={<VideoQuality />} />
+            <Route path="/interactive-clip" element={<InteractiveClip />} />
           </Routes>
         </main>
       </div>
