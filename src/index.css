@@ -1,72 +1,63 @@
 @import "tailwindcss";
 
+/*
+  Fonts are imported from main.tsx, not here. A CSS @import of a node_modules
+  stylesheet leaves its url() references unresolved, so the .woff2 files never
+  get emitted and the faces silently fall back to system fonts.
+*/
+
+/*
+  Bench — a video engineer's workbench.
+
+  The surround is a graded blue-grey rather than black: reference monitors sit in
+  a neutral surround so the surround itself doesn't skew how you read the image.
+  One accent, VU-meter amber, carries interaction. Green and red are reserved for
+  measured facts (native vs upscaled, ok vs failed) and never used decoratively.
+*/
 @theme {
-  /* Premium Glass Theme Palette */
-  --color-background: #050505;
-  /* Deepest Void Black */
-  --color-foreground: #ffffff;
+  --color-surround: #1c1f26;
+  --color-bench: #23272f;
+  --color-raised: #2b303a;
+  --color-rule: #333945;
+  --color-rule-bright: #454d5c;
 
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-input: rgba(255, 255, 255, 0.03);
-  --color-ring: #ccff00;
-  /* Cyber Lime Glow */
+  --color-signal: #e8a33d;
+  --color-signal-dim: #a97722;
 
-  --color-primary: #ccff00;
-  /* Cyber Lime */
-  --color-primary-foreground: #000000;
+  --color-ink: #edeff3;
+  --color-ink-dim: #939aa8;
+  --color-ink-faint: #6b7280;
 
-  --color-secondary: #1a1a1a;
-  --color-secondary-foreground: #ffffff;
+  /* Data only. Never decoration. */
+  --color-true: #5fbf8f;
+  --color-fault: #e0655b;
 
-  --color-muted: #27272a;
-  --color-muted-foreground: #a1a1aa;
+  --font-display: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
 
-  --color-accent: rgba(255, 255, 255, 0.05);
-  --color-accent-foreground: #ffffff;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+}
 
-  --color-destructive: #ff3b30;
-  --color-destructive-foreground: #ffffff;
-
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   margin: 0;
   overflow: hidden;
+  background-color: var(--color-surround);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
   -webkit-font-smoothing: antialiased;
 }
 
-@layer utilities {
-
-  /* Glassmorphism Utilities */
-  .glass-panel {
-    @apply bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl;
-  }
-
-  .glass-button {
-    @apply bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 active:scale-[0.98] transition-all duration-200 backdrop-blur-md;
-  }
-
-  .glass-input {
-    @apply bg-white/5 border border-white/10 focus:border-[#ccff00]/50 placeholder:text-zinc-600 transition-all duration-300 backdrop-blur-sm outline-none;
-  }
-
-  /* Text Effects */
-  .text-glow {
-    text-shadow: 0 0 20px rgba(204, 255, 0, 0.3);
-  }
-
-  .font-mono-tech {
-    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  }
-}
-
+/* Frameless-window drag regions. */
 .draggable {
   -webkit-app-region: drag;
 }
@@ -75,9 +66,63 @@ body {
   -webkit-app-region: no-drag;
 }
 
-/* Custom scrollbar - Minimal */
+@layer components {
+  /*
+    The panel is the workbench surface: a raised plane with a hairline edge and a
+    single-pixel top highlight, the way a physical instrument face catches light.
+  */
+  .panel {
+    background-color: var(--color-bench);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.04),
+      0 1px 2px rgb(0 0 0 / 0.3);
+  }
+
+  /* Small-caps machine label. Used for field names, never for prose. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  .field {
+    background-color: var(--color-surround);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-md);
+    color: var(--color-ink);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 9px 11px;
+    width: 100%;
+    outline: none;
+    transition: border-color 120ms ease;
+  }
+
+  .field::placeholder {
+    color: var(--color-ink-faint);
+  }
+
+  .field:focus-visible {
+    border-color: var(--color-signal);
+    box-shadow: 0 0 0 3px rgb(232 163 61 / 0.15);
+  }
+}
+
+/* Keyboard focus must always be visible. */
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -85,10 +130,77 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 10px;
+  background: var(--color-rule);
+  border: 3px solid var(--color-surround);
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--color-rule-bright);
+}
+
+::selection {
+  background: var(--color-signal);
+  color: #1a1206;
+}
+
+/*
+  Motion. The one orchestrated moment is the format ladder resolving — rungs
+  settle in sequence, like a meter finding its level.
+*/
+@keyframes rung-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scaleX(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lift-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(320%);
+  }
+}
+
+.animate-rung-in {
+  animation: rung-in 260ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+.animate-lift-in {
+  animation: lift-in 200ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+.animate-sweep {
+  animation: sweep 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

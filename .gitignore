@@ -52,3 +52,6 @@ python_backend/venv/
 cookies.txt
 **/cookies.txt
 python_backend/save_cookies.py
+
+# Test artifacts
+python_backend/tests/downloads/

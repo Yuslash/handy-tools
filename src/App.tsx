@@ -1,28 +1,37 @@
-import { HashRouter, Routes, Route } from 'react-router-dom'
-import { Home } from './pages/Home'
-import { VideoDownloader } from './pages/VideoDownloader'
-import { ClipDownloader } from './pages/ClipDownloader'
-import { VideoQuality } from './pages/VideoQuality'
-import { InteractiveClip } from './pages/InteractiveClip'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Titlebar } from './components/Titlebar'
+import { Rail } from './components/Rail'
+import { BackendProvider } from './state/backend'
+import { TransfersProvider } from './state/transfers'
+import { Download } from './pages/Download'
+import { Clip } from './pages/Clip'
+import { Segment } from './pages/Segment'
+import { Inspect } from './pages/Inspect'
+import { Gif } from './pages/Gif'
 
-function App() {
+export default function App() {
   return (
-    <HashRouter>
-      <div className="h-screen w-screen flex flex-col text-foreground overflow-hidden">
-
-
-        <main className="flex-1 overflow-hidden relative">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/video-downloader" element={<VideoDownloader />} />
-            <Route path="/clip-downloader" element={<ClipDownloader />} />
-            <Route path="/video-quality" element={<VideoQuality />} />
-            <Route path="/interactive-clip" element={<InteractiveClip />} />
-          </Routes>
-        </main>
-      </div>
-    </HashRouter>
+    <BackendProvider>
+      <TransfersProvider>
+        <HashRouter>
+          <div className="flex h-full flex-col bg-surround">
+            <Titlebar />
+            <div className="flex min-h-0 flex-1">
+              <Rail />
+              <main className="min-w-0 flex-1">
+                <Routes>
+                  <Route path="/" element={<Download />} />
+                  <Route path="/clip" element={<Clip />} />
+                  <Route path="/segment" element={<Segment />} />
+                  <Route path="/inspect" element={<Inspect />} />
+                  <Route path="/gif" element={<Gif />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </main>
+            </div>
+          </div>
+        </HashRouter>
+      </TransfersProvider>
+    </BackendProvider>
   )
 }
-
-export default App
