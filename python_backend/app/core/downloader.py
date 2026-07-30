@@ -1,3 +1,4 @@
+import sys
 import os
 import platform
 import shutil
@@ -41,6 +42,45 @@ def find_node():
     return None
 
 
+FROZEN = getattr(sys, 'frozen', False)
+
+
+def find_cookie_file():
+    """Locate cookies.txt, or None.
+
+    Under PyInstaller __file__ points into a temp extraction dir, so the durable
+    location is next to the executable — for the packaged app, Electron's
+    resources folder.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    package_root = os.path.dirname(os.path.dirname(here))  # app/core -> app -> python_backend
+    candidates = []
+    if FROZEN:
+        exe_dir = os.path.dirname(sys.executable)
+        candidates += [os.path.join(exe_dir, 'cookies.txt'),
+                       os.path.join(exe_dir, '..', 'cookies.txt')]
+    candidates += [os.path.join(package_root, 'cookies.txt'),
+                   os.path.join(os.path.dirname(package_root), 'cookies.txt')]
+    for path in candidates:
+        if os.path.exists(path):
+            return os.path.abspath(path)
+    return None
+
+
+def apply_cookies(ydl_opts):
+    """Attach cookies if we have a jar.
+
+    Chrome's cookie DB is never read from a frozen build: it is DPAPI-encrypted
+    and fails with "Failed to decrypt with DPAPI", which took out every request.
+    """
+    cookie_file = find_cookie_file()
+    if cookie_file:
+        ydl_opts['cookiefile'] = cookie_file
+    elif not FROZEN:
+        ydl_opts['cookiesfrombrowser'] = ('chrome', )
+    return ydl_opts
+
+
 def apply_js_runtime(ydl_opts):
     """Give yt-dlp a JS runtime for YouTube signature solving, if one exists."""
     node = find_node()
@@ -66,15 +106,6 @@ def get_video_info(url):
         except ImportError:
             return None
     
-    # Check for cookies.txt
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(os.path.dirname(current_dir)) # app/core -> app -> python_backend
-    project_root = os.path.dirname(parent_dir)
-    
-    cookie_file = os.path.join(parent_dir, 'cookies.txt')
-    if not os.path.exists(cookie_file):
-         cookie_file = os.path.join(project_root, 'cookies.txt')
-    
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -85,11 +116,7 @@ def get_video_info(url):
         # video info".
     }
 
-    if os.path.exists(cookie_file):
-        ydl_opts['cookiefile'] = cookie_file
-    else:
-        ydl_opts['cookiesfrombrowser'] = ('chrome', )
-
+    apply_cookies(ydl_opts)
     apply_js_runtime(ydl_opts)
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:

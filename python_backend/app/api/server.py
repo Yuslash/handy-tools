@@ -22,28 +22,6 @@ if parent_dir not in sys.path:
 
 FROZEN = getattr(sys, 'frozen', False)
 
-
-def cookie_candidates():
-    """Where cookies.txt might live, in priority order.
-
-    Under PyInstaller __file__ points into a temp extraction dir that is wiped
-    on exit, so the only durable location is next to the executable — which for
-    the packaged app is the Electron resources folder.
-    """
-    paths = []
-    if FROZEN:
-        exe_dir = os.path.dirname(sys.executable)
-        paths += [
-            os.path.join(exe_dir, 'cookies.txt'),
-            os.path.join(exe_dir, '..', 'cookies.txt'),
-        ]
-    paths += [
-        os.path.join(current_dir, 'cookies.txt'),
-        os.path.join(parent_dir, 'cookies.txt'),
-        os.path.join(os.path.dirname(parent_dir), 'cookies.txt'),
-    ]
-    return [os.path.abspath(p) for p in paths]
-
 try:
     from app.core import downloader as backend
     from app.core.utils import check_ffmpeg, parse_time_to_seconds
@@ -323,7 +301,7 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
         
     os.makedirs(output_dir, exist_ok=True)
     
-    cookie_file = next((p for p in cookie_candidates() if os.path.exists(p)), None)
+    cookie_file = backend.find_cookie_file()
 
     # Create logger with awareness of total duration
     custom_logger = ProgressLogger(progress_queue, total_duration)
