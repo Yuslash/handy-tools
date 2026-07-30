@@ -10,6 +10,13 @@ export type BackendStatus =
   | { state: 'ready'; port: number }
   | { state: 'failed'; reason: string }
 
+export interface LogLine {
+  at: number
+  source: 'app' | 'backend'
+  level: 'info' | 'error'
+  text: string
+}
+
 let port = 8000
 
 export function setBackendPort(p: number) {

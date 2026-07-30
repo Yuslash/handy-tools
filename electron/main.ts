@@ -4,6 +4,7 @@ import path from 'node:path'
 import { spawn, ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
+import http from 'node:http'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -29,8 +30,45 @@ type BackendStatus =
 
 let backendStatus: BackendStatus = { state: 'starting' }
 
+export interface LogLine {
+  at: number
+  source: 'app' | 'backend'
+  level: 'info' | 'error'
+  text: string
+}
+
+/**
+ * Recent log lines, kept in memory so the UI can show why startup failed.
+ * Backend output previously went only to a console nobody sees.
+ */
+const logBuffer: LogLine[] = []
+const LOG_LIMIT = 500
+/** Mirrored to disk so a crash that closes the window is still diagnosable. */
+let logFilePath = ''
+
+function record(source: LogLine['source'], level: LogLine['level'], text: string) {
+  for (const line of String(text).split(/\r?\n/)) {
+    const trimmed = line.trimEnd()
+    if (!trimmed) continue
+
+    const entry: LogLine = { at: Date.now(), source, level, text: trimmed }
+    logBuffer.push(entry)
+    if (logBuffer.length > LOG_LIMIT) logBuffer.shift()
+
+    win?.webContents.send('backend-log', entry)
+    if (logFilePath) {
+      try {
+        fs.appendFileSync(logFilePath, `${new Date(entry.at).toISOString()} [${source}] ${trimmed}\n`)
+      } catch {
+        // logging must never take the app down
+      }
+    }
+  }
+}
+
 function log(msg: string) {
   console.log(`[main] ${msg}`)
+  record('app', 'info', msg)
 }
 
 function setBackendStatus(status: BackendStatus) {
@@ -82,21 +120,36 @@ async function findFreePort(start: number): Promise<number> {
   return start
 }
 
-async function waitForBackend(port: number, timeoutMs = 60_000): Promise<boolean> {
+/**
+ * One health probe.
+ *
+ * Uses node:http rather than fetch: fetch in the main process goes through
+ * Chromium's network stack, which could hang on a localhost request without
+ * ever resolving or honouring the abort signal — leaving the UI stuck on
+ * "Starting the backend" even though the backend was up and answering.
+ */
+function probe(port: number, timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { host: '127.0.0.1', port, path: '/', timeout: timeoutMs },
+      (res) => {
+        const ok = (res.statusCode ?? 500) < 400
+        res.resume() // drain so the socket can close
+        resolve(ok)
+      },
+    )
+    req.on('timeout', () => { req.destroy(); resolve(false) })
+    req.on('error', () => resolve(false))
+  })
+}
+
+async function waitForBackend(port: number, timeoutMs = 120_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (pythonProcess?.exitCode !== null && pythonProcess?.exitCode !== undefined) {
-      return false // process already died; no point polling
-    }
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/`, {
-        signal: AbortSignal.timeout(2000),
-      })
-      if (res.ok) return true
-    } catch {
-      // not up yet
-    }
-    await new Promise((r) => setTimeout(r, 300))
+    // exitCode is null while running; a number means it already died.
+    if (typeof pythonProcess?.exitCode === 'number') return false
+    if (await probe(port)) return true
+    await new Promise((r) => setTimeout(r, 400))
   }
   return false
 }
@@ -135,11 +188,14 @@ async function startPythonBackend() {
     setBackendStatus({ state: 'failed', reason: `Could not start Python: ${err.message}` })
   })
 
-  pythonProcess.stdout?.on('data', (d) => log(`[backend] ${d}`.trimEnd()))
+  pythonProcess.stdout?.on('data', (d) => record('backend', 'info', String(d)))
   pythonProcess.stderr?.on('data', (d) => {
     const text = String(d)
     stderrTail = (stderrTail + text).slice(-2000)
-    console.error(`[backend] ${text}`.trimEnd())
+    // uvicorn writes its normal startup banner to stderr, so only genuine
+    // problems are marked as errors.
+    const level = /error|traceback|exception|failed/i.test(text) ? 'error' : 'info'
+    record('backend', level, text)
   })
 
   pythonProcess.on('close', (code) => {
@@ -237,6 +293,14 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
+  // Start a fresh log each run, next to the app's other user data.
+  try {
+    logFilePath = path.join(app.getPath('userData'), 'bench.log')
+    fs.writeFileSync(logFilePath, `Bench ${app.getVersion()} — ${new Date().toISOString()}\n`)
+  } catch {
+    logFilePath = ''
+  }
+
   ipcMain.on('minimize', () => win?.minimize())
   ipcMain.on('close', () => win?.close())
   ipcMain.on('maximize-toggle', () => {
@@ -245,6 +309,17 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-backend-status', () => backendStatus)
+  ipcMain.handle('get-logs', () => logBuffer)
+  ipcMain.handle('open-log-file', () => {
+    if (logFilePath) shell.showItemInFolder(logFilePath)
+    return logFilePath
+  })
+  ipcMain.handle('restart-backend', async () => {
+    log('Restarting backend on request')
+    stopPythonBackend()
+    await startPythonBackend()
+    return backendStatus
+  })
 
   ipcMain.handle('open-downloads', () => shell.openPath(app.getPath('downloads')))
 

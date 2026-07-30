@@ -5,6 +5,13 @@ export type BackendStatus =
   | { state: 'ready'; port: number }
   | { state: 'failed'; reason: string }
 
+export interface LogLine {
+  at: number
+  source: 'app' | 'backend'
+  level: 'info' | 'error'
+  text: string
+}
+
 /**
  * A named surface rather than a raw ipcRenderer passthrough, so the renderer can
  * only reach the channels listed here.
@@ -24,6 +31,21 @@ const api = {
       ipcRenderer.off('backend-status', listener)
     }
   },
+
+  /** Everything logged so far this run. */
+  getLogs: (): Promise<LogLine[]> => ipcRenderer.invoke('get-logs'),
+
+  /** Stream new log lines as they arrive. Returns an unsubscribe function. */
+  onLog: (cb: (line: LogLine) => void) => {
+    const listener = (_e: unknown, line: LogLine) => cb(line)
+    ipcRenderer.on('backend-log', listener)
+    return () => {
+      ipcRenderer.off('backend-log', listener)
+    }
+  },
+
+  showLogFile: (): Promise<string> => ipcRenderer.invoke('open-log-file'),
+  restartBackend: (): Promise<BackendStatus> => ipcRenderer.invoke('restart-backend'),
 
   openDownloads: (): Promise<string> => ipcRenderer.invoke('open-downloads'),
   selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('select-directory'),

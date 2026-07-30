@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useBackend } from '../state/backend'
+import { LogPanel } from './LogPanel'
 
 /**
  * Shared frame for every tool: a title, a one-line description of what the tool
@@ -29,7 +30,13 @@ export function Page({
         </header>
 
         {backend.state === 'ready' ? (
-          children
+          <>
+            {children}
+            {/* Collapsed once things are working, but always one click away. */}
+            <div className="mt-8">
+              <LogPanel />
+            </div>
+          </>
         ) : (
           <BackendGate
             starting={backend.state === 'starting'}
@@ -43,22 +50,27 @@ export function Page({
 
 function BackendGate({ starting, reason }: { starting: boolean; reason: string }) {
   return (
-    <div className="panel flex items-start gap-3 p-4">
-      {starting ? (
-        <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin text-signal" />
-      ) : (
-        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-fault" />
-      )}
-      <div>
-        <p className="text-[13px] font-medium text-ink">
-          {starting ? 'Starting the backend…' : 'The backend isn’t running'}
-        </p>
-        <p className="mt-1 text-[12px] leading-relaxed text-ink-dim">
-          {starting
-            ? 'This takes a few seconds on first launch. Tools become available as soon as it answers.'
-            : reason || 'Downloads and conversions are unavailable until it starts.'}
-        </p>
+    <div className="space-y-3">
+      <div className="panel flex items-start gap-3 p-4">
+        {starting ? (
+          <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin text-signal" />
+        ) : (
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-fault" />
+        )}
+        <div>
+          <p className="text-[13px] font-medium text-ink">
+            {starting ? 'Starting the backend…' : 'The backend isn’t running'}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-dim">
+            {starting
+              ? 'The first launch unpacks the backend, which can take up to a minute. Tools become available as soon as it answers.'
+              : reason || 'Downloads and conversions are unavailable until it starts.'}
+          </p>
+        </div>
       </div>
+
+      {/* Open by default here: if you are looking at this panel, you want the detail. */}
+      <LogPanel defaultOpen />
     </div>
   )
 }
