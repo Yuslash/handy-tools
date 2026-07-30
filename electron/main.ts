@@ -1,12 +1,12 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { spawn, ChildProcess, execSync } from 'node:child_process'
+import { spawn, ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// The built directory structure
 process.env.APP_ROOT = path.join(__dirname, '..')
 
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
@@ -15,195 +15,201 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-let win: BrowserWindow | null
+const DEFAULT_PORT = 8000
+
+let win: BrowserWindow | null = null
 let pythonProcess: ChildProcess | null = null
+let backendPort = DEFAULT_PORT
+
+/** What the renderer is told about the backend, so the UI can say something true. */
+type BackendStatus =
+  | { state: 'starting' }
+  | { state: 'ready'; port: number }
+  | { state: 'failed'; reason: string }
+
+let backendStatus: BackendStatus = { state: 'starting' }
 
 function log(msg: string) {
-  console.log(`[Electron Main] ${msg}`)
+  console.log(`[main] ${msg}`)
 }
 
-function findGitRoot(startPath: string): string | null {
-  let currentDir = startPath
-  while (true) {
-    if (fs.existsSync(path.join(currentDir, '.git'))) {
-      return currentDir
-    }
-    const parentDir = path.dirname(currentDir)
-    if (parentDir === currentDir) {
-      // Reached root
-      return null
-    }
-    currentDir = parentDir
-  }
+function setBackendStatus(status: BackendStatus) {
+  backendStatus = status
+  win?.webContents.send('backend-status', status)
 }
 
-function checkForUpdates(): boolean {
-  if (!app.isPackaged) {
-    log('Skipping update check in dev mode')
-    return false
+/**
+ * Locate the Python that has our dependencies installed.
+ *
+ * The venv is checked first: a bare `python` from PATH on Windows is usually the
+ * Microsoft Store alias, which has none of the backend's packages and opens the
+ * Store instead of running.
+ */
+function resolvePython(): { executable: string; args: string[] } | null {
+  const root = process.env.APP_ROOT!
+  const venv = process.platform === 'win32'
+    ? path.join(root, 'python_backend', '.venv', 'Scripts', 'python.exe')
+    : path.join(root, 'python_backend', '.venv', 'bin', 'python')
+
+  const server = path.join(root, 'python_backend', 'app', 'api', 'server.py')
+
+  if (fs.existsSync(venv)) {
+    return { executable: venv, args: [server] }
   }
 
-  // Find git root starting from executable location
-  // In packaged app, exe is in root or dist/win-unpacked
-  const startPath = path.dirname(app.getPath('exe'))
-  const gitRoot = findGitRoot(startPath)
+  log(`No venv at ${venv} — falling back to a system Python. Run: python -m venv python_backend/.venv`)
+  const fallbacks: Array<{ executable: string; args: string[] }> = process.platform === 'win32'
+    ? [{ executable: 'py', args: ['-3', server] }, { executable: 'python', args: [server] }]
+    : [{ executable: 'python3', args: [server] }, { executable: 'python', args: [server] }]
 
-  if (!gitRoot) {
-    log('No .git directory found in parent hierarchy, skipping update check')
-    return false
+  return fallbacks[0] ?? null
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tester = net.createServer()
+    tester.once('error', () => resolve(false))
+    tester.once('listening', () => tester.close(() => resolve(true)))
+    tester.listen(port, '127.0.0.1')
+  })
+}
+
+/** First free port at or after `start`, so we never fight another app for 8000. */
+async function findFreePort(start: number): Promise<number> {
+  for (let port = start; port < start + 20; port++) {
+    if (await isPortFree(port)) return port
   }
+  return start
+}
 
-  try {
-    log(`Checking for updates in ${gitRoot}...`)
-    // Configure git to not ask for credentials to avoid hanging
-    const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-
-    // Fetch latest from remote
-    execSync('git fetch origin main', {
-      cwd: gitRoot,
-      env: gitEnv,
-      encoding: 'utf-8',
-      timeout: 15000
-    })
-
-    const localHead = execSync('git rev-parse HEAD', { cwd: gitRoot, encoding: 'utf-8' }).trim()
-    const remoteHead = execSync('git rev-parse origin/main', { cwd: gitRoot, encoding: 'utf-8' }).trim()
-
-    if (localHead !== remoteHead) {
-      log(`Update found! Local: ${localHead}, Remote: ${remoteHead}. Updating...`)
-
-      // Hard reset to latest remote
-      execSync('git reset --hard origin/main', {
-        cwd: gitRoot,
-        encoding: 'utf-8'
+async function waitForBackend(port: number, timeoutMs = 60_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (pythonProcess?.exitCode !== null && pythonProcess?.exitCode !== undefined) {
+      return false // process already died; no point polling
+    }
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/`, {
+        signal: AbortSignal.timeout(2000),
       })
-
-      log('Update applied successfully. Restarting application...')
-
-      // Relaunch and quit
-      app.relaunch()
-      app.quit()
-      return true
-    } else {
-      log('Application is up to date.')
-      return false
+      if (res.ok) return true
+    } catch {
+      // not up yet
     }
-  } catch (error) {
-    console.error('Failed to check for updates:', error)
-    return false
+    await new Promise((r) => setTimeout(r, 300))
+  }
+  return false
+}
+
+async function startPythonBackend() {
+  const resolved = resolvePython()
+  if (!resolved) {
+    setBackendStatus({ state: 'failed', reason: 'No Python interpreter found.' })
+    return
+  }
+
+  const isPackaged = app.isPackaged
+  const executable = isPackaged ? path.join(process.resourcesPath, 'backend.exe') : resolved.executable
+  const args = isPackaged ? [] : resolved.args
+
+  if (isPackaged && !fs.existsSync(executable)) {
+    setBackendStatus({ state: 'failed', reason: 'Backend executable is missing from this install.' })
+    return
+  }
+
+  backendPort = await findFreePort(DEFAULT_PORT)
+  log(`Starting backend: ${executable} (port ${backendPort})`)
+  setBackendStatus({ state: 'starting' })
+
+  let stderrTail = ''
+
+  pythonProcess = spawn(executable, args, {
+    env: { ...process.env, BENCH_PORT: String(backendPort), PYTHONUNBUFFERED: '1' },
+  })
+
+  // Without this listener a missing executable is an unhandled exception in main.
+  pythonProcess.on('error', (err) => {
+    log(`Failed to spawn backend: ${err.message}`)
+    setBackendStatus({ state: 'failed', reason: `Could not start Python: ${err.message}` })
+  })
+
+  pythonProcess.stdout?.on('data', (d) => log(`[backend] ${d}`.trimEnd()))
+  pythonProcess.stderr?.on('data', (d) => {
+    const text = String(d)
+    stderrTail = (stderrTail + text).slice(-2000)
+    console.error(`[backend] ${text}`.trimEnd())
+  })
+
+  pythonProcess.on('close', (code) => {
+    log(`Backend exited with code ${code}`)
+    if (code !== 0 && backendStatus.state !== 'ready') {
+      // ModuleNotFoundError is by far the most common cause, so name the fix.
+      const missing = /ModuleNotFoundError: No module named '([^']+)'/.exec(stderrTail)
+      setBackendStatus({
+        state: 'failed',
+        reason: missing
+          ? `Python package "${missing[1]}" is missing. Run: python_backend/.venv/Scripts/pip install -r python_backend/requirements.txt`
+          : `Backend stopped unexpectedly (exit ${code}).`,
+      })
+    }
+  })
+
+  const ready = await waitForBackend(backendPort)
+  if (ready) {
+    log(`Backend ready on ${backendPort}`)
+    setBackendStatus({ state: 'ready', port: backendPort })
+  } else if (backendStatus.state !== 'failed') {
+    setBackendStatus({ state: 'failed', reason: 'Backend did not respond in time.' })
   }
 }
 
-// Kill any existing process on port 8000
-function killExistingBackend() {
+/**
+ * Stop only the process we started. The previous version force-killed whatever
+ * happened to hold port 8000, which could be an unrelated app.
+ */
+function stopPythonBackend() {
+  if (!pythonProcess?.pid) return
+  log(`Stopping backend (pid ${pythonProcess.pid})`)
   try {
     if (process.platform === 'win32') {
-      // Find and kill process using port 8000 on Windows
-      const result = execSync('netstat -ano | findstr :8000 | findstr LISTENING', { encoding: 'utf-8', timeout: 5000 })
-      const lines = result.trim().split('\n')
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/)
-        const pid = parts[parts.length - 1]
-        if (pid && !isNaN(parseInt(pid))) {
-          log(`Killing existing process on port 8000 (PID: ${pid})`)
-          try {
-            execSync(`taskkill /F /PID ${pid}`, { encoding: 'utf-8', timeout: 5000 })
-          } catch (e) {
-            // Process might already be dead
-          }
-        }
-      }
+      spawn('taskkill', ['/F', '/T', '/PID', String(pythonProcess.pid)], { stdio: 'ignore' })
     } else {
-      // Unix/Mac: kill process on port 8000
-      try {
-        execSync('lsof -ti:8000 | xargs kill -9', { encoding: 'utf-8', timeout: 5000 })
-      } catch (e) {
-        // No process found
-      }
+      pythonProcess.kill('SIGTERM')
     }
   } catch (e) {
-    // No process found on port 8000, which is fine
-    log('No existing backend process found on port 8000')
+    log(`Error stopping backend: ${e}`)
   }
-}
-
-function startPythonBackend() {
-  // Kill any existing process first
-  killExistingBackend()
-
-  // Wait a moment for port to be released
-  setTimeout(() => {
-    let executable: string
-    let args: string[] = []
-
-    if (app.isPackaged) {
-      executable = path.join(process.resourcesPath, 'backend.exe')
-    } else {
-      executable = 'python'
-      args = [path.join(process.env.APP_ROOT, 'python_backend', 'app', 'api', 'server.py')]
-    }
-
-    log(`Starting Python backend from ${executable}`)
-
-    pythonProcess = spawn(executable, args)
-
-    pythonProcess.stdout?.on('data', (data) => {
-      log(`Python stdout: ${data}`)
-    })
-
-    pythonProcess.stderr?.on('data', (data) => {
-      console.error(`Python stderr: ${data}`)
-    })
-
-    pythonProcess.on('close', (code) => {
-      log(`Python process exited with code ${code}`)
-    })
-  }, 500)
-}
-
-function stopPythonBackend() {
-  if (pythonProcess) {
-    log('Stopping Python backend...')
-    try {
-      if (process.platform === 'win32') {
-        // On Windows, kill the process tree
-        execSync(`taskkill /F /T /PID ${pythonProcess.pid}`, { encoding: 'utf-8' })
-      } else {
-        pythonProcess.kill('SIGTERM')
-      }
-    } catch (e) {
-      log(`Error stopping backend: ${e}`)
-    }
-    pythonProcess = null
-  }
+  pythonProcess = null
 }
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    frame: false, // Keep frameless for custom UI
-    transparent: false, // Disable transparency for stability
+    width: 1280,
+    height: 860,
+    minWidth: 720,
+    minHeight: 560,
+    frame: false,
     titleBarStyle: 'hidden',
+    backgroundColor: '#1C1F26',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false
     },
-    backgroundColor: '#09090b' // Solid dark background (Zinc-950)
   })
 
-  // Maximize the window to give the "Full Screen" feel requested
-  win.maximize()
+  win.once('ready-to-show', () => win?.show())
 
   win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
+    // Replay status for a renderer that loaded after the backend settled.
+    win?.webContents.send('backend-status', backendStatus)
   })
 
-  // Clean up python backend just in case
-  win.on('close', () => {
-    stopPythonBackend()
+  // Open external links in the real browser, never in the app window.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -221,65 +227,54 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('will-quit', () => {
-  stopPythonBackend()
-})
+app.on('before-quit', stopPythonBackend)
+app.on('will-quit', stopPythonBackend)
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
-  }
+  if (BrowserWindow.getAllWindows().length === 0) createWindow()
 })
 
 app.whenReady().then(() => {
   ipcMain.on('minimize', () => win?.minimize())
   ipcMain.on('close', () => win?.close())
-  ipcMain.on('open-downloads', () => {
-    // Open the user's downloads folder 
-    // Note: The python backend defaults to Path.home() / "Downloads"
-    // We can assume this standard location or generic downloads path
-    const downloadsPath = app.getPath('downloads')
-    import('electron').then(({ shell }) => {
-      shell.openPath(downloadsPath)
-    })
+  ipcMain.on('maximize-toggle', () => {
+    if (win?.isMaximized()) win.unmaximize()
+    else win?.maximize()
   })
 
+  ipcMain.handle('get-backend-status', () => backendStatus)
+
+  ipcMain.handle('open-downloads', () => shell.openPath(app.getPath('downloads')))
+
   ipcMain.handle('select-directory', async () => {
-    const { dialog } = await import('electron')
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory'],
-      title: 'Select Download Location',
-      buttonLabel: 'Select Folder'
+      title: 'Choose where downloads are saved',
+      buttonLabel: 'Save here',
     })
-
-    if (result.canceled) {
-      return null
-    } else {
-      return result.filePaths[0]
-    }
+    return result.canceled ? null : result.filePaths[0]
   })
 
   ipcMain.handle('select-file', async () => {
-    const { dialog } = await import('electron')
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openFile'],
-      title: 'Select Video File',
+      title: 'Choose a video file',
       filters: [
-        { name: 'Videos', extensions: ['mp4', 'mkv', 'avi', 'mov', 'webm'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
+        { name: 'Video', extensions: ['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v', 'flv'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
     })
-
-    if (result.canceled) {
-      return null
-    } else {
-      return result.filePaths[0]
-    }
+    return result.canceled ? null : result.filePaths[0]
   })
 
-  // Check for updates before doing anything else
-  if (!checkForUpdates()) {
-    startPythonBackend()
-    createWindow()
-  }
+  ipcMain.handle('open-file-location', async (_, filePath: string) => {
+    if (filePath && fs.existsSync(filePath)) {
+      shell.showItemInFolder(filePath)
+      return true
+    }
+    return false
+  })
+
+  createWindow()
+  void startPythonBackend()
 })

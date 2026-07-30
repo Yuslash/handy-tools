@@ -1,7 +1,21 @@
-fastapi
-uvicorn
-yt-dlp
-websockets
-opencv-python
-numpy
-moviepy
+# Bench backend dependencies.
+# Pinned so a rebuild is reproducible. Versions verified 2026-07-30.
+
+# API server
+fastapi==0.141.1
+uvicorn==0.40.0
+websockets==15.0.1
+pydantic==2.13.4
+
+# Downloading. yt-dlp tracks site changes constantly — expect to bump this
+# regularly, and independently of everything else here.
+yt-dlp==2026.7.4
+
+# Video inspection (ffprobe metadata + OpenCV Laplacian sharpness)
+opencv-python==5.0.0.93
+numpy==2.5.1
+
+# GIF conversion. The code uses the moviepy v2 API (subclipped / resized /
+# write_gif(logger=)), which does not exist in 1.x — do not relax this floor.
+moviepy==2.2.1
+proglog==0.1.12

@@ -12,6 +12,24 @@ except ImportError:
 from .utils import check_ffmpeg, format_size, install_ffmpeg_windows, check_and_install_yt_dlp
 from .logger import MyLogger
 
+
+def apply_js_runtime(ydl_opts):
+    """Configure the JS runtime yt-dlp uses for YouTube signature solving.
+
+    Left to yt-dlp's own PATH lookup unless BENCH_NODE_PATH names a specific
+    binary. Hardcoding an install location breaks nvm/fnm/volta setups and any
+    machine that put Node somewhere else.
+    """
+    node_path = os.environ.get('BENCH_NODE_PATH')
+    if node_path:
+        ydl_opts['js_runtimes'] = {'node': {'args': [node_path]}}
+
+    # Opt-in: this fetches executable JS from GitHub at download time.
+    if os.environ.get('BENCH_REMOTE_COMPONENTS') == '1':
+        ydl_opts['remote_components'] = ['ejs:github']
+
+    return ydl_opts
+
 def get_video_info(url):
     """Get video information using yt-dlp Python API"""
     global yt_dlp
@@ -23,20 +41,34 @@ def get_video_info(url):
         except ImportError:
             return None
     
+    # Check for cookies.txt
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(os.path.dirname(current_dir)) # app/core -> app -> python_backend
+    project_root = os.path.dirname(parent_dir)
+    
+    cookie_file = os.path.join(parent_dir, 'cookies.txt')
+    if not os.path.exists(cookie_file):
+         cookie_file = os.path.join(project_root, 'cookies.txt')
+    
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'extract_flat': False,
-        'ignoreerrors': True,
+        'noplaylist': True,
+        # No 'ignoreerrors' — the caller needs the real reason a URL failed so it
+        # can show it, rather than a bare None that becomes "Could not retrieve
+        # video info".
     }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return info
-    except Exception as e:
-        print(f"❌ Error getting video info: {e}")
-        return None
+
+    if os.path.exists(cookie_file):
+        ydl_opts['cookiefile'] = cookie_file
+    else:
+        ydl_opts['cookiesfrombrowser'] = ('chrome', )
+
+    apply_js_runtime(ydl_opts)
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(url, download=False)
 
 
 def list_available_formats(info):
@@ -140,6 +172,15 @@ def download_video_ytdlp(url, quality=None, output_dir=None):
         print("   Install ffmpeg for complete video+audio downloads.")
     
     # Build options
+    # Check for cookies.txt
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(os.path.dirname(current_dir))
+    project_root = os.path.dirname(parent_dir)
+    
+    cookie_file = os.path.join(parent_dir, 'cookies.txt')
+    if not os.path.exists(cookie_file):
+         cookie_file = os.path.join(project_root, 'cookies.txt')
+
     ydl_opts = {
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
         'logger': MyLogger(),
@@ -148,6 +189,16 @@ def download_video_ytdlp(url, quality=None, output_dir=None):
         'no_warnings': False,
         'ignoreerrors': True,
     }
+    
+    if os.path.exists(cookie_file):
+        ydl_opts['cookiefile'] = cookie_file
+        print(f"[Cookies] Using file: {cookie_file}")
+    else:
+        ydl_opts['cookiesfrombrowser'] = ('chrome', )
+        print("[Cookies] Using Chrome browser cookies")
+        
+    # Explicitly enable Node.js
+    apply_js_runtime(ydl_opts)
     
     # If ffmpeg is not available, avoid formats that require merging
     if not ffmpeg_available:
@@ -220,6 +271,15 @@ def simple_download(url, output_dir=None):
     os.makedirs(output_dir, exist_ok=True)
     
     # Simple options for Twitter
+    # Check for cookies.txt
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(os.path.dirname(current_dir))
+    project_root = os.path.dirname(parent_dir)
+    
+    cookie_file = os.path.join(parent_dir, 'cookies.txt')
+    if not os.path.exists(cookie_file):
+         cookie_file = os.path.join(project_root, 'cookies.txt')
+
     ydl_opts = {
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
         'quiet': False,
@@ -227,6 +287,14 @@ def simple_download(url, output_dir=None):
         'no_warnings': False,
         'ignoreerrors': True,
     }
+    
+    if os.path.exists(cookie_file):
+        ydl_opts['cookiefile'] = cookie_file
+    else:
+        ydl_opts['cookiesfrombrowser'] = ('chrome', )
+    
+    # Explicitly enable Node.js
+    apply_js_runtime(ydl_opts)
     
     # For Twitter, try to get mp4 directly to avoid ffmpeg issues
     if "twitter.com" in url or "x.com" in url:

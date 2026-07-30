@@ -1,24 +1,36 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
-// --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
-  },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.off(channel, ...omit)
-  },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.send(channel, ...omit)
-  },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.invoke(channel, ...omit)
+export type BackendStatus =
+  | { state: 'starting' }
+  | { state: 'ready'; port: number }
+  | { state: 'failed'; reason: string }
+
+/**
+ * A named surface rather than a raw ipcRenderer passthrough, so the renderer can
+ * only reach the channels listed here.
+ */
+const api = {
+  minimize: () => ipcRenderer.send('minimize'),
+  close: () => ipcRenderer.send('close'),
+  toggleMaximize: () => ipcRenderer.send('maximize-toggle'),
+
+  getBackendStatus: (): Promise<BackendStatus> => ipcRenderer.invoke('get-backend-status'),
+
+  /** Subscribe to backend state changes. Returns an unsubscribe function. */
+  onBackendStatus: (cb: (status: BackendStatus) => void) => {
+    const listener = (_e: unknown, status: BackendStatus) => cb(status)
+    ipcRenderer.on('backend-status', listener)
+    return () => {
+      ipcRenderer.off('backend-status', listener)
+    }
   },
 
-  // You can expose other APTs you need here.
-  // ...
-})
+  openDownloads: (): Promise<string> => ipcRenderer.invoke('open-downloads'),
+  selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('select-directory'),
+  selectFile: (): Promise<string | null> => ipcRenderer.invoke('select-file'),
+  revealFile: (filePath: string): Promise<boolean> => ipcRenderer.invoke('open-file-location', filePath),
+}
+
+contextBridge.exposeInMainWorld('bench', api)
+
+export type BenchApi = typeof api

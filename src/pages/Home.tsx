@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Video, Camera, ArrowRight, Zap, Clock, Disc, Globe, Scissors, Activity } from 'lucide-react'
+import { Video, ArrowRight, Zap, Clock, Disc, Scissors, Activity } from 'lucide-react'
 import { Widget } from '../components/Widget'
 import { InteractiveGrid } from '../components/InteractiveGrid'
 import { VideoDownloader } from './VideoDownloader'
-import { ScrollingScreenshot } from './ScrollingScreenshot'
 import { ClipDownloader } from './ClipDownloader'
 import { VideoQuality } from './VideoQuality'
 import { InteractiveClip } from './InteractiveClip'
@@ -99,29 +98,7 @@ export function Home() {
                         </div>
                     </div>
 
-                    {/* Web Capture Card */}
-                    <div
-                        onClick={() => setActiveTool('screenshot')}
-                        className="glass-panel group cursor-pointer relative overflow-hidden p-8 flex flex-col h-64 rounded-xl hover:border-cyan-400/50 transition-all duration-500"
-                    >
-                        <div className="absolute -right-8 -bottom-8 opacity-[0.03] group-hover:opacity-[0.1] transition-all duration-700 transform group-hover:scale-110 group-hover:-rotate-12">
-                            <Globe size={200} />
-                        </div>
 
-                        <div className="z-10 relative flex-1 flex flex-col">
-                            <div className="mb-auto">
-                                <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:bg-cyan-400 transition-colors duration-300">
-                                    <Camera size={20} className="text-zinc-400 group-hover:text-black transition-colors" />
-                                </div>
-                                <h2 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-cyan-400 transition-colors">Web Capture</h2>
-                                <p className="text-zinc-500 text-xs leading-relaxed">Generate scrolling screenshots of full webpages.</p>
-                            </div>
-
-                            <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase tracking-widest group-hover:text-white transition-colors mt-4">
-                                Initialize <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
-                            </div>
-                        </div>
-                    </div>
 
                     {/* Video Quality Card */}
                     <div
@@ -235,15 +212,7 @@ export function Home() {
                             </Widget>
                         )}
 
-                        {activeTool === 'screenshot' && (
-                            <Widget
-                                title="Web Capture"
-                                onClose={() => setActiveTool(null)}
-                                width="w-[700px]"
-                            >
-                                <ScrollingScreenshot embedded />
-                            </Widget>
-                        )}
+
 
                         {activeTool === 'quality' && (
                             <Widget

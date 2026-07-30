@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, FileVideo, Image as ImageIcon, Video, FolderOpen, Play } from 'lucide-react'
+import { ArrowLeft, Image as ImageIcon, Video, FolderOpen, Play } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 
-interface GifResponse {
-    status: string
-    output_path: string
+interface ProgressMessage {
+    type: 'progress' | 'status' | 'complete' | 'error'
+    percent?: number
+    frame?: number
+    total_frames?: number
+    message?: string
+    output_path?: string
 }
 
 export function VideoToGif({ embedded = false }: { embedded?: boolean }) {
@@ -13,6 +17,10 @@ export function VideoToGif({ embedded = false }: { embedded?: boolean }) {
     const [error, setError] = useState<string | null>(null)
     const [resultPath, setResultPath] = useState<string | null>(null)
     const [filePath, setFilePath] = useState<string | null>(null)
+
+    // Progress State
+    const [progress, setProgress] = useState(0)
+    const [statusMessage, setStatusMessage] = useState<string>("")
 
     // Form State
     const [startTime, setStartTime] = useState("")
@@ -27,6 +35,8 @@ export function VideoToGif({ embedded = false }: { embedded?: boolean }) {
             if (path) {
                 setFilePath(path)
                 setResultPath(null)
+                setProgress(0)
+                setStatusMessage("")
             }
         } catch (err: any) {
             setError(err.message)
@@ -40,8 +50,10 @@ export function VideoToGif({ embedded = false }: { embedded?: boolean }) {
             setLoading(true)
             setError(null)
             setResultPath(null)
+            setProgress(0)
+            setStatusMessage("Starting conversion...")
 
-            const response = await fetch('http://localhost:8000/api/convert_gif', {
+            const response = await fetch('http://localhost:8000/api/convert_gif_stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -58,10 +70,56 @@ export function VideoToGif({ embedded = false }: { embedded?: boolean }) {
                 throw new Error(data.detail || 'Conversion failed')
             }
 
-            const data: GifResponse = await response.json()
-            setResultPath(data.output_path)
+            // Handle SSE stream
+            const reader = response.body?.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ''
+
+            if (!reader) {
+                throw new Error('Failed to get response stream')
+            }
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                const text = decoder.decode(value, { stream: true })
+                buffer += text
+                const lines = buffer.split('\n')
+
+                // Keep the last partial line in the buffer
+                buffer = lines.pop() || ''
+
+                for (const line of lines) {
+                    if (line.trim().startsWith('data: ')) {
+                        try {
+                            const jsonStr = line.trim().slice(6)
+                            const msg: ProgressMessage = JSON.parse(jsonStr)
+
+                            if (msg.type === 'progress') {
+                                setProgress(msg.percent || 0)
+                                if (msg.frame && msg.total_frames) {
+                                    setStatusMessage(`Converting: Frame ${msg.frame}/${msg.total_frames}`)
+                                }
+                            } else if (msg.type === 'status') {
+                                setStatusMessage(msg.message || '')
+                            } else if (msg.type === 'complete') {
+                                setProgress(100)
+                                setResultPath(msg.output_path || null)
+                                setStatusMessage("Complete!")
+                            } else if (msg.type === 'error') {
+                                throw new Error(msg.message || 'Conversion failed')
+                            }
+                        } catch (parseErr: any) {
+                            console.warn('Failed to parse SSE message:', parseErr, line)
+                            // Continue to next line
+                        }
+                    }
+                }
+            }
         } catch (err: any) {
             setError(err.message)
+            setStatusMessage("")
         } finally {
             setLoading(false)
         }
@@ -164,6 +222,27 @@ export function VideoToGif({ embedded = false }: { embedded?: boolean }) {
                         )}
                     </div>
 
+                    {/* Progress Bar */}
+                    {loading && (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-bold text-indigo-400">{progress}%</span>
+                            </div>
+                            <div className="w-full bg-zinc-800 rounded-full h-3 overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-indigo-600 to-purple-500 rounded-full transition-all duration-300 ease-out"
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                            <div className="flex justify-center pt-2">
+                                <div className="flex items-center gap-2 text-xs text-zinc-500">
+                                    <Video className="animate-spin" size={14} />
+                                    <span>{statusMessage || 'Processing...'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Action Area */}
                     <div className="flex justify-center">
                         <Button
@@ -176,7 +255,7 @@ export function VideoToGif({ embedded = false }: { embedded?: boolean }) {
                         >
                             {loading ? (
                                 <span className="flex items-center gap-2">
-                                    <Video className="animate-spin" size={16} /> Converting...
+                                    <Video className="animate-spin" size={16} /> Converting... {progress}%
                                 </span>
                             ) : (
                                 <span className="flex items-center gap-2">

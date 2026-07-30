@@ -85,10 +85,17 @@ def analyze_video(video_path: str):
         bitrate = 0
         
     codec = meta.get("codec_name", "unknown")
+    # ffprobe reports frame rate as a rational string like "30000/1001".
+    fps = 0.0
+    raw_fps = meta.get("avg_frame_rate") or "0"
     try:
-        fps = eval(meta.get("avg_frame_rate", "0"))
-    except:
-        fps = 0
+        if "/" in raw_fps:
+            num, _, den = raw_fps.partition("/")
+            fps = float(num) / float(den) if float(den) else 0.0
+        else:
+            fps = float(raw_fps)
+    except (ValueError, ZeroDivisionError):
+        fps = 0.0
 
     quality_label = get_quality_label(width, height)
     sharpness = analyze_sharpness(video_path)

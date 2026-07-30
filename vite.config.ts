@@ -13,6 +13,7 @@ export default defineConfig({
   server: {
     watch: {
       usePolling: true,
+      ignored: ['**/python_backend/**', '**/dist-electron/**', '**/release/**', '**/*.part', '**/*.ytdl', '**/cookies.txt'],
     },
   },
   plugins: [
