@@ -300,7 +300,8 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
                  download_ranges = [(s_sec, e_sec)]
                  total_duration = e_sec - s_sec
                  print(f"[Range] Custom range: {s_sec}-{e_sec}s")
-                 await websocket.send_json({"type": "info", "message": f"Downloading Custom Range: {s_sec}s - {e_sec}s"})
+                 await websocket.send_json({"type": "info", "message": f"Range {s_sec}s - {e_sec}s ({e_sec - s_sec:.0f}s)"})
+                 await websocket.send_json({"type": "info", "message": "Cutting on keyframes so the clip starts cleanly and stays in sync"})
              else:
                  await websocket.send_json({"type": "error", "message": "Start time must be less than end time"})
                  return
@@ -354,7 +355,17 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
         ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, download_ranges)
         if not audio_only and FFMPEG_AVAILABLE:
             ydl_opts['format'] = MP4_SAFE_FORMAT
-            ydl_opts['force_keyframes_at_cuts'] = False
+            # Cut on real keyframes.
+            #
+            # Without this, ffmpeg starts the copy at the nearest *preceding*
+            # keyframe and marks the frames before the requested start as
+            # "discard", giving them negative timestamps. Players that ignore
+            # that flag show several seconds of frozen or blank video while the
+            # audio plays from the right point, so the clip opens black and the
+            # sound runs ahead. Re-encoding around the cut costs a little time
+            # and puts a keyframe at exactly 0 with video and audio the same
+            # length.
+            ydl_opts['force_keyframes_at_cuts'] = True
             ydl_opts['merge_output_format'] = 'mp4'
     
     # Handle audio-only downloads

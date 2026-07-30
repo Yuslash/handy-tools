@@ -55,3 +55,6 @@ python_backend/save_cookies.py
 
 # Test artifacts
 python_backend/tests/downloads/
+
+# Remembered build output folder (machine-specific)
+.build-output

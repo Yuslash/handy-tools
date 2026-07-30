@@ -2,9 +2,13 @@
 REM ============================================================================
 REM  Bench - build the Windows installer
 REM
-REM    build.bat              full build, output to "D:\linkdownload testing"
-REM    build.bat "C:\out"     full build, output to a folder you choose
+REM    build.bat              full build to the last folder used
+REM    build.bat "C:\out"     build there, and remember it for next time
 REM    build.bat --fast       skip the Python backend (reuse the last backend.exe)
+REM
+REM  The output folder defaults to "D:\linkdownload testing" and is remembered
+REM  in .build-output once you pass one explicitly. Whatever is already in that
+REM  folder is deleted before packaging, so no stale installer is left behind.
 REM
 REM  The backend takes a few minutes to freeze and rarely changes, so use
 REM  --fast when you have only touched the UI.
@@ -14,14 +18,25 @@ cd /d "%~dp0"
 
 set "OUTDIR=D:\linkdownload testing"
 set "SKIP_BACKEND="
+set "OUTFILE=%~dp0.build-output"
+
+REM Reuse the last folder you built to, so the path only has to be given once.
+if exist "%OUTFILE%" (
+    for /f "usebackq delims=" %%L in ("%OUTFILE%") do if not "%%L"=="" set "OUTDIR=%%L"
+)
 
 REM ---- arguments (order independent) -----------------------------------------
+set "OUTDIR_GIVEN="
 for %%A in (%*) do (
     if /I "%%~A"=="--fast"  (set "SKIP_BACKEND=1") else (
     if /I "%%~A"=="--ui"    (set "SKIP_BACKEND=1") else (
         set "OUTDIR=%%~A"
+        set "OUTDIR_GIVEN=1"
     ))
 )
+
+REM Remember an explicitly chosen folder for next time.
+if defined OUTDIR_GIVEN (>"%OUTFILE%" echo %OUTDIR%)
 
 echo.
 echo ============================================================
@@ -73,9 +88,28 @@ call npm run build || goto :failed
 
 REM ---- installer -------------------------------------------------------------
 echo [4/4] Packaging the installer...
+
 REM Bench must not be running: electron-builder cannot replace files in use.
 taskkill /F /IM Bench.exe >nul 2>&1
 taskkill /F /IM backend.exe >nul 2>&1
+REM Give Windows a moment to release the file handles.
+ping -n 3 127.0.0.1 >nul 2>&1
+
+REM Remove the previous build from the output folder so nothing stale is left
+REM behind — an old Setup.exe sitting next to a new one is easy to run by
+REM mistake, and a leftover win-unpacked can keep files locked.
+if exist "%OUTDIR%" (
+    echo       Clearing previous build in "%OUTDIR%"
+    if exist "%OUTDIR%\win-unpacked"     rmdir /S /Q "%OUTDIR%\win-unpacked"
+    if exist "%OUTDIR%\win-unpacked.tmp" rmdir /S /Q "%OUTDIR%\win-unpacked.tmp"
+    del /Q "%OUTDIR%\*.exe"          >nul 2>&1
+    del /Q "%OUTDIR%\*.blockmap"     >nul 2>&1
+    del /Q "%OUTDIR%\*.7z"           >nul 2>&1
+    del /Q "%OUTDIR%\latest.yml"     >nul 2>&1
+    del /Q "%OUTDIR%\builder-*.yml"  >nul 2>&1
+) else (
+    mkdir "%OUTDIR%"
+)
 
 REM ELECTRON_RUN_AS_NODE makes electron behave as plain node and breaks packaging.
 set "ELECTRON_RUN_AS_NODE="
