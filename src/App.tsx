@@ -3,6 +3,7 @@ import { Titlebar } from './components/Titlebar'
 import { Rail } from './components/Rail'
 import { BackendProvider } from './state/backend'
 import { LogsProvider } from './state/logs'
+import { InputsProvider } from './state/inputs'
 import { TransfersProvider } from './state/transfers'
 import { Download } from './pages/Download'
 import { Clip } from './pages/Clip'
@@ -15,7 +16,8 @@ export default function App() {
     <BackendProvider>
       {/* Logs sit above transfers so download events can be recorded. */}
       <LogsProvider>
-        <TransfersProvider>
+        <InputsProvider>
+          <TransfersProvider>
           <HashRouter>
             <div className="flex h-full flex-col bg-bg">
               <Titlebar />
@@ -34,7 +36,8 @@ export default function App() {
               </div>
             </div>
           </HashRouter>
-        </TransfersProvider>
+          </TransfersProvider>
+        </InputsProvider>
       </LogsProvider>
     </BackendProvider>
   )

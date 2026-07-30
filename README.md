@@ -62,7 +62,16 @@ finished row reveals the file in Explorer. *Clear* removes the finished ones.
 ### 3. Tool view
 
 The main area. Every tool has the same frame: a title, one line saying what it
-does, its own controls, then its Activity log.
+does, a **Clear** button, its own controls, then its Activity log.
+
+**What you type is kept.** URLs, file paths, timecodes and GIF options stay put
+when you switch tools and are still there after restarting the app — retyping a
+URL because you looked at another tool is pure friction. **Clear** in the header
+empties that one tool; the others keep theirs.
+
+Fetched results — the format ladder, an inspection report — survive switching
+tools but not a restart, because a stored format list goes stale and showing it
+again would be a lie.
 
 If the backend is not ready, the controls are replaced by a panel explaining why
 — so you never get buttons that silently do nothing.
@@ -92,9 +101,10 @@ Backend and system lines appear under every tool, deliberately: a backend
 failure is usually why a tool failed. Errors are red and counted in the header.
 
 It is collapsed while things work and opens automatically when the backend is
-not ready. *Clear* empties the current tool's log, *Restart backend* relaunches
-the Python process, and *File* reveals `bench.log`, which mirrors everything to
-disk so a crash that closes the window is still diagnosable.
+not ready. *Clear log* empties the current tool's log — distinct from the
+*Clear* in the page header, which resets that tool's inputs. *Restart backend*
+relaunches the Python process, and *File* reveals `bench.log`, which mirrors
+everything to disk so a crash that closes the window is still diagnosable.
 
 Downloads land in your Downloads folder.
 

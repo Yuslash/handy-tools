@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, Eraser, Loader2 } from 'lucide-react'
 import { useBackend } from '../state/backend'
 import { LogPanel } from './LogPanel'
+import { Button } from './ui/Button'
 import type { LogScope } from '../lib/backend'
 
 /**
@@ -13,12 +14,17 @@ export function Page({
   title,
   description,
   scope,
+  onClear,
+  canClear,
   children,
 }: {
   title: string
   description: string
   /** Which log this screen shows. Each tool sees only its own events. */
   scope: LogScope
+  /** Resets this tool's inputs. Inputs otherwise persist across navigation and restarts. */
+  onClear?: () => void
+  canClear?: boolean
   children: ReactNode
 }) {
   const backend = useBackend()
@@ -26,9 +32,17 @@ export function Page({
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-180 px-8 py-8">
-        <header className="mb-6">
-          <h1 className="font-display text-title font-semibold tracking-tight text-ink">{title}</h1>
-          <p className="mt-1 text-body text-ink-dim">{description}</p>
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-display text-title font-semibold tracking-tight text-ink">{title}</h1>
+            <p className="mt-1 text-body text-ink-dim">{description}</p>
+          </div>
+
+          {onClear && (
+            <Button size="sm" variant="ghost" onClick={onClear} disabled={!canClear} className="mt-1">
+              <Eraser size={12} /> Clear
+            </Button>
+          )}
         </header>
 
         {backend.state === 'ready' ? (

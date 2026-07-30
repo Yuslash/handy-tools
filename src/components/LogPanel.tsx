@@ -60,8 +60,11 @@ export function LogPanel({
         </button>
 
         {lines.length > 0 && (
-          <Button size="sm" variant="ghost" onClick={clear} aria-label="Clear this log">
-            <Trash2 size={12} /> Clear
+          // "Clear log", not "Clear" — the page header has its own Clear for
+          // the tool's inputs, and two bare "Clear" buttons on one screen is a
+          // guessing game.
+          <Button size="sm" variant="ghost" onClick={clear}>
+            <Trash2 size={12} /> Clear log
           </Button>
         )}
         <Button size="sm" variant="ghost" onClick={restart} disabled={restarting}>

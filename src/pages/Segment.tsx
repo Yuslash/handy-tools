@@ -9,12 +9,15 @@ import { Button } from '../components/ui/Button'
 import { useTransfers, useTransfer } from '../state/transfers'
 import { useGifConvert } from '../hooks/useGifConvert'
 import { useToolLog } from '../state/logs'
+import { useToolInputs } from '../state/inputs'
 
 /** Download only a chosen range of a long video, instead of the whole thing. */
 export function Segment() {
-  const [url, setUrl] = useState('')
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
+  const { values, set, clear } = useToolInputs('segment')
+  const { url, start, end } = values
+  const setUrl = (v: string) => set({ url: v })
+  const setStart = (v: string) => set({ start: v })
+  const setEnd = (v: string) => set({ end: v })
   const [error, setError] = useState('')
   const [transferId, setTransferId] = useState<string | null>(null)
 
@@ -22,6 +25,13 @@ export function Segment() {
   const transfer = useTransfer(transferId)
   const gif = useGifConvert('segment')
   const log = useToolLog('segment')
+
+  const reset = () => {
+    clear()
+    setError('')
+    setTransferId(null)
+    gif.reset()
+  }
 
   const startSec = parseTimecode(start)
   const endSec = parseTimecode(end)
@@ -54,7 +64,7 @@ export function Segment() {
   const busy = transfer?.status === 'downloading' || transfer?.status === 'merging'
 
   return (
-    <Page scope="segment" title="Segment" description="Cut a specific range out of a long video without downloading all of it.">
+    <Page onClear={reset} canClear={Boolean(url || start || end)} scope="segment" title="Segment" description="Cut a specific range out of a long video without downloading all of it.">
       <div className="space-y-6">
         {/* No button here — the action lives with the range, below. */}
         <UrlField value={url} onChange={setUrl} onSubmit={download} />

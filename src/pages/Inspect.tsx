@@ -6,6 +6,7 @@ import { checkQuality } from '../lib/backend'
 import type { QualityReport } from '../lib/backend'
 import { cn } from '../lib/utils'
 import { useToolLog } from '../state/logs'
+import { useToolInputs } from '../state/inputs'
 
 /**
  * Measures a file rather than trusting its label: resolution and bitrate from
@@ -14,18 +15,25 @@ import { useToolLog } from '../state/logs'
  * No timeline here — for a static file inspection it would be decoration.
  */
 export function Inspect() {
-  const [path, setPath] = useState('')
-  const [report, setReport] = useState<QualityReport | null>(null)
+  const { values, set, clear, result: report, setResult: setReport } =
+    useToolInputs<'inspect', QualityReport>('inspect')
+  const path = values.path
+  const setPath = (v: string) => set({ path: v })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const log = useToolLog('inspect')
+
+  const reset = () => {
+    clear()
+    setError('')
+  }
 
   const choose = async () => {
     const chosen = await window.bench.selectFile()
     if (!chosen) return
 
     setPath(chosen)
-    setReport(null)
+    setReport(undefined)
     setError('')
     setLoading(true)
     log.info(`Inspecting ${chosen}`)
@@ -46,7 +54,7 @@ export function Inspect() {
   }
 
   return (
-    <Page scope="inspect" title="Inspect" description="Measure a video file’s real resolution and detect upscaled footage.">
+    <Page onClear={reset} canClear={Boolean(path || report)} scope="inspect" title="Inspect" description="Measure a video file’s real resolution and detect upscaled footage.">
       <div className="space-y-6">
         <div className="flex gap-2">
           <div className="field flex flex-1 items-center overflow-hidden">

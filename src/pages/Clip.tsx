@@ -7,13 +7,16 @@ import { TransferReadout } from '../components/TransferReadout'
 import { useTransfers, useTransfer } from '../state/transfers'
 import { useGifConvert } from '../hooks/useGifConvert'
 import { useToolLog } from '../state/logs'
+import { useToolInputs } from '../state/inputs'
 
 /**
  * YouTube renders clips at a reduced quality. The backend detects a /clip/ URL,
  * resolves the parent video, and downloads that range at full resolution.
  */
 export function Clip() {
-  const [url, setUrl] = useState('')
+  const { values, set, clear } = useToolInputs('clip')
+  const url = values.url
+  const setUrl = (next: string) => set({ url: next })
   const [error, setError] = useState('')
   const [transferId, setTransferId] = useState<string | null>(null)
 
@@ -21,6 +24,13 @@ export function Clip() {
   const transfer = useTransfer(transferId)
   const gif = useGifConvert('clip')
   const log = useToolLog('clip')
+
+  const reset = () => {
+    clear()
+    setError('')
+    setTransferId(null)
+    gif.reset()
+  }
 
   const download = () => {
     const trimmed = url.trim()
@@ -49,6 +59,8 @@ export function Clip() {
 
   return (
     <Page
+      onClear={reset}
+      canClear={Boolean(url)}
       scope="clip"
       title="Clip"
       description="Download a YouTube clip at the source video’s full quality, not the clip’s reduced render."

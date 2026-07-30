@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { FileVideo, Film } from 'lucide-react'
 import { Page } from '../components/Page'
 import { Button } from '../components/ui/Button'
@@ -7,25 +6,27 @@ import { TimeRange, parseTimecode } from '../components/TimeRange'
 import { useGifConvert } from '../hooks/useGifConvert'
 import { cn } from '../lib/utils'
 import { useToolLog } from '../state/logs'
-
+import { useToolInputs } from '../state/inputs'
 const FPS_CHOICES = [10, 15, 20, 25]
 const WIDTH_CHOICES = [320, 480, 640, 800]
-
 /** Convert a local video file to a GIF, optionally trimming to a range first. */
 export function Gif() {
-  const [path, setPath] = useState('')
-  const [fps, setFps] = useState(15)
-  const [width, setWidth] = useState(480)
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
-
+  const { values, set, clear } = useToolInputs('gif')
+  const { path, fps, width, start, end } = values
+  const setPath = (v: string) => set({ path: v })
+  const setFps = (v: number) => set({ fps: v })
+  const setWidth = (v: number) => set({ width: v })
+  const setStart = (v: string) => set({ start: v })
+  const setEnd = (v: string) => set({ end: v })
   const gif = useGifConvert('gif')
   const log = useToolLog('gif')
-
+  const reset = () => {
+    clear()
+    gif.reset()
+  }
   const startSec = parseTimecode(start)
   const endSec = parseTimecode(end)
   const rangeInvalid = startSec !== null && endSec !== null && endSec <= startSec
-
   const choose = async () => {
     const chosen = await window.bench.selectFile()
     if (!chosen) return
@@ -33,7 +34,6 @@ export function Gif() {
     gif.reset()
     log.info(`Selected ${chosen}`)
   }
-
   const convert = () => {
     gif.convert({
       file_path: path,
@@ -43,9 +43,8 @@ export function Gif() {
       end_time: end.trim() || undefined,
     })
   }
-
   return (
-    <Page scope="gif" title="GIF" description="Turn a video file into a GIF, with optional trimming.">
+    <Page onClear={reset} canClear={Boolean(path || start || end)} scope="gif" title="GIF" description="Turn a video file into a GIF, with optional trimming.">
       <div className="space-y-6">
         <div className="flex gap-2">
           <div className="field flex flex-1 items-center overflow-hidden">
@@ -57,7 +56,6 @@ export function Gif() {
             <FileVideo size={14} /> Choose file
           </Button>
         </div>
-
         <div className="panel space-y-4 p-4">
           <ChoiceRow
             label="Frame rate"
@@ -67,9 +65,7 @@ export function Gif() {
             onChange={setFps}
             format={(v) => `${v} fps`}
           />
-
           <div className="h-px bg-line" />
-
           <ChoiceRow
             label="Width"
             hint="Height follows the source"
@@ -78,13 +74,10 @@ export function Gif() {
             onChange={setWidth}
             format={(v) => `${v} px`}
           />
-
           <div className="h-px bg-line" />
-
           <TimeRange start={start} end={end} onStart={setStart} onEnd={setEnd} invalid={rangeInvalid} />
           <p className="text-small text-ink-faint">Leave the range empty to convert the whole file.</p>
         </div>
-
         <Button
           variant="primary"
           size="lg"
@@ -95,7 +88,6 @@ export function Gif() {
           <Film size={14} />
           {gif.state.status === 'converting' ? 'Converting' : 'Make GIF'}
         </Button>
-
         {gif.state.status !== 'idle' && (
           <GifPanel state={gif.state} onConvert={convert} onReset={gif.reset} />
         )}
@@ -103,7 +95,6 @@ export function Gif() {
     </Page>
   )
 }
-
 function ChoiceRow({
   label,
   hint,

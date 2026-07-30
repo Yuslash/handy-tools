@@ -12,10 +12,15 @@ import type { VideoInfo } from '../lib/backend'
 import { useTransfers, useTransfer } from '../state/transfers'
 import { useGifConvert } from '../hooks/useGifConvert'
 import { useToolLog } from '../state/logs'
+import { useToolInputs } from '../state/inputs'
 
 export function Download() {
-  const [url, setUrl] = useState('')
-  const [info, setInfo] = useState<VideoInfo | null>(null)
+  // The URL survives switching tools and restarting; formats survive navigation
+  // only, since a stored format list would be stale.
+  const { values, set, clear, result: info, setResult: setInfo } =
+    useToolInputs<'download', VideoInfo>('download')
+  const url = values.url
+
   const [choice, setChoice] = useState<LadderChoice | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -26,10 +31,20 @@ export function Download() {
   const gif = useGifConvert('download')
   const log = useToolLog('download')
 
+  const setUrl = (next: string) => set({ url: next })
+
+  const reset = () => {
+    clear()
+    setChoice(null)
+    setError('')
+    setTransferId(null)
+    gif.reset()
+  }
+
   const analyse = async () => {
     setLoading(true)
     setError('')
-    setInfo(null)
+    setInfo(undefined)
     setChoice(null)
     setTransferId(null)
     gif.reset()
@@ -75,6 +90,8 @@ export function Download() {
       title="Download"
       description="Save a video, or pull just its audio, from a link."
       scope="download"
+      onClear={reset}
+      canClear={Boolean(url || info)}
     >
       <div className="space-y-6">
         <UrlField
@@ -95,7 +112,7 @@ export function Download() {
                 <img
                   src={info.thumbnail}
                   alt=""
-                  className="h-[72px] w-32 shrink-0 rounded-md border border-line object-cover"
+                  className="h-18 w-32 shrink-0 rounded-md border border-line object-cover"
                 />
               )}
               <div className="min-w-0">
