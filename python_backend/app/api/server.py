@@ -20,6 +20,30 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
+FROZEN = getattr(sys, 'frozen', False)
+
+
+def cookie_candidates():
+    """Where cookies.txt might live, in priority order.
+
+    Under PyInstaller __file__ points into a temp extraction dir that is wiped
+    on exit, so the only durable location is next to the executable — which for
+    the packaged app is the Electron resources folder.
+    """
+    paths = []
+    if FROZEN:
+        exe_dir = os.path.dirname(sys.executable)
+        paths += [
+            os.path.join(exe_dir, 'cookies.txt'),
+            os.path.join(exe_dir, '..', 'cookies.txt'),
+        ]
+    paths += [
+        os.path.join(current_dir, 'cookies.txt'),
+        os.path.join(parent_dir, 'cookies.txt'),
+        os.path.join(os.path.dirname(parent_dir), 'cookies.txt'),
+    ]
+    return [os.path.abspath(p) for p in paths]
+
 try:
     from app.core import downloader as backend
     from app.core.utils import check_ffmpeg, parse_time_to_seconds
@@ -30,10 +54,14 @@ except ImportError:
     from python_backend.app.core.utils import check_ffmpeg, parse_time_to_seconds
     from python_backend.app.schemas import UrlRequest
 
-# Force UTF-8 encoding for stdout/stderr to handle emojis/unicode on Windows
+# Force UTF-8 for stdout/stderr so titles with non-ASCII characters don't crash
+# logging on Windows. A frozen windowed build can have these set to None, so
+# guard rather than assume a .buffer exists.
 if sys.platform == 'win32':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    for name in ('stdout', 'stderr'):
+        stream = getattr(sys, name, None)
+        if stream is not None and hasattr(stream, 'buffer'):
+            setattr(sys, name, io.TextIOWrapper(stream.buffer, encoding='utf-8', errors='replace'))
 
 app = FastAPI(title="Bench backend")
 
@@ -142,18 +170,34 @@ class ProgressLogger:
         self.progress_queue = progress_queue
         self.total_duration = total_duration
         self.last_percent = -1
+        # Kept so a failure can report what yt-dlp/ffmpeg actually said. The
+        # previous version discarded every warning and error, which is why
+        # "ffmpeg exited with code N" arrived with no explanation.
+        self.messages = []
+
+    def _remember(self, msg, level):
+        text = re.sub(r'\x1b\[[0-9;]*m', '', str(msg)).strip()
+        if text:
+            self.messages.append(f"[{level}] {text}")
+            del self.messages[:-40]
 
     def debug(self, msg):
         self._parse_progress(msg)
 
     def info(self, msg):
-        pass
+        self._parse_progress(msg)
 
     def warning(self, msg):
-        pass
+        self._remember(msg, 'warning')
+        print(f"[yt-dlp warning] {msg}", flush=True)
 
     def error(self, msg):
+        self._remember(msg, 'error')
+        print(f"[yt-dlp error] {msg}", flush=True)
         self._parse_progress(msg)
+
+    def recent_errors(self):
+        return [m for m in self.messages if m.startswith('[error]')]
 
     def _parse_progress(self, msg):
         if not self.total_duration or "time=" not in msg:
@@ -279,14 +323,7 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
         
     os.makedirs(output_dir, exist_ok=True)
     
-    # Use timestamp in filename
-    cookie_file = os.path.join(current_dir, 'cookies.txt')
-    if not os.path.exists(cookie_file):
-        cookie_file = os.path.join(parent_dir, 'cookies.txt')
-    # Check project root (parent of python_backend)
-    if not os.path.exists(cookie_file):
-        project_root = os.path.dirname(parent_dir)
-        cookie_file = os.path.join(project_root, 'cookies.txt')
+    cookie_file = next((p for p in cookie_candidates() if os.path.exists(p)), None)
 
     # Create logger with awareness of total duration
     custom_logger = ProgressLogger(progress_queue, total_duration)
@@ -305,24 +342,25 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
         'noplaylist': True,
     }
     
-    if os.path.exists(cookie_file):
+    # A range download is handed to ffmpeg, and yt-dlp forwards only
+    # info_dict['http_headers'] to it — never the cookie jar. A URL obtained
+    # with a signed-in session is bound to that session, so ffmpeg's own request
+    # comes back 403 Forbidden. Extracting anonymously yields a URL ffmpeg can
+    # actually fetch, so ranges deliberately skip cookies.
+    if download_ranges and cookie_file:
+        print("[Cookies] Skipped for range download (ffmpeg cannot present the session)")
+        cookie_file = None
+
+    if cookie_file:
         ydl_opts['cookiefile'] = cookie_file
         print(f"[Cookies] Using file: {cookie_file}")
-    else:
+    elif not download_ranges and not FROZEN:
+        # Reading Chrome's cookie DB needs Chrome closed and fails in a packaged
+        # build, so only attempt it during development.
         ydl_opts['cookiesfrombrowser'] = ('chrome', )
         print("[Cookies] Using Chrome browser cookies")
-    
-    # YouTube signature solving needs a JS runtime. Let yt-dlp find Node on PATH
-    # rather than assuming a fixed install location; only pin a path if the user
-    # set one explicitly.
-    node_path = os.environ.get('BENCH_NODE_PATH')
-    if node_path:
-        ydl_opts['js_runtimes'] = {'node': {'args': [node_path]}}
 
-    # Fetching JS components from GitHub at download time is a network dependency
-    # and a supply-chain surface, so it is opt-in rather than always on.
-    if os.environ.get('BENCH_REMOTE_COMPONENTS') == '1':
-        ydl_opts['remote_components'] = ['ejs:github']
+    backend.apply_js_runtime(ydl_opts)
     
     # Apply download ranges if this is a clip
     if download_ranges:
@@ -399,6 +437,11 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
             progress_queue.put({"type": "complete"})
         except Exception as e:
             download_error = tidy_error(e)
+            # A bare "ffmpeg exited with code N" tells the user nothing; attach
+            # whatever yt-dlp reported alongside it.
+            detail = custom_logger.recent_errors()
+            if detail and 'exited with code' in download_error:
+                download_error = f"{download_error} — {detail[-1].removeprefix('[error] ')}"
             progress_queue.put({"type": "error", "message": download_error})
         finally:
             download_complete.set()

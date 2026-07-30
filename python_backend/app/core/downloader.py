@@ -1,5 +1,6 @@
 import os
 import platform
+import shutil
 from pathlib import Path
 
 # Try to import yt_dlp, but don't fail immediately if not found
@@ -13,16 +14,40 @@ from .utils import check_ffmpeg, format_size, install_ffmpeg_windows, check_and_
 from .logger import MyLogger
 
 
-def apply_js_runtime(ydl_opts):
-    """Configure the JS runtime yt-dlp uses for YouTube signature solving.
+def find_node():
+    """Locate a Node binary, preferring an explicit override.
 
-    Left to yt-dlp's own PATH lookup unless BENCH_NODE_PATH names a specific
-    binary. Hardcoding an install location breaks nvm/fnm/volta setups and any
-    machine that put Node somewhere else.
+    yt-dlp only enables deno automatically, so Node has to be passed in by path
+    or YouTube extraction runs with no JS runtime and silently loses formats.
+    Searching PATH keeps this working with nvm/fnm/volta, which the previous
+    hardcoded 'C:/Program Files/nodejs/node.exe' did not.
     """
-    node_path = os.environ.get('BENCH_NODE_PATH')
-    if node_path:
-        ydl_opts['js_runtimes'] = {'node': {'args': [node_path]}}
+    override = os.environ.get('BENCH_NODE_PATH')
+    if override and os.path.exists(override):
+        return override
+
+    found = shutil.which('node')
+    if found:
+        return found
+
+    for candidate in (
+        r'C:\Program Files\nodejs\node.exe',
+        r'C:\Program Files (x86)\nodejs\node.exe',
+        '/usr/local/bin/node',
+        '/usr/bin/node',
+    ):
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def apply_js_runtime(ydl_opts):
+    """Give yt-dlp a JS runtime for YouTube signature solving, if one exists."""
+    node = find_node()
+    if node:
+        ydl_opts['js_runtimes'] = {'node': {'args': [node]}}
+    else:
+        print("[JS] No Node runtime found — some YouTube formats may be missing")
 
     # Opt-in: this fetches executable JS from GitHub at download time.
     if os.environ.get('BENCH_REMOTE_COMPONENTS') == '1':

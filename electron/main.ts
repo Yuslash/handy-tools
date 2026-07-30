@@ -125,6 +125,8 @@ async function startPythonBackend() {
 
   pythonProcess = spawn(executable, args, {
     env: { ...process.env, BENCH_PORT: String(backendPort), PYTHONUNBUFFERED: '1' },
+    // The frozen backend is a console app; without this its window flashes up.
+    windowsHide: true,
   })
 
   // Without this listener a missing executable is an unhandled exception in main.
