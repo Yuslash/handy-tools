@@ -87,8 +87,10 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
       .sort((a, b) => b[0] - a[0])
       .map(([h, f]) => ({
         key: `v-${f.id}`,
-        // Video-only streams need an audio track merged in.
-        formatId: f.acodec === 'none' ? `${f.id}+bestaudio/best` : f.id,
+        // Video-only streams need audio merged in. Ask for AAC first: plain
+        // "bestaudio" often gives Opus, which most Windows players cannot decode
+        // inside an MP4 and so plays completely silent.
+        formatId: f.acodec === 'none' ? `${f.id}+bestaudio[acodec^=mp4a]/${f.id}+bestaudio/best` : f.id,
         audioOnly: false,
         tier: tierLabel(h),
         codec: shortCodec(f.vcodec),
@@ -120,7 +122,7 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
   const maxSize = Math.max(...video.map((r) => r.size), audio?.size ?? 0, 1)
 
   if (video.length === 0 && !audio) {
-    return <p className="text-[13px] text-ink-dim">No downloadable formats were found for this URL.</p>
+    return <p className="text-body text-ink-dim">No downloadable formats were found for this URL.</p>
   }
 
   const renderRung = (rung: Rung, index: number) => {
@@ -142,32 +144,32 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
           'rounded-md border px-3 py-2 text-left transition-colors duration-100',
           isSelected
             ? 'border-signal bg-signal/10'
-            : 'border-transparent hover:border-rule-bright hover:bg-raised',
+            : 'border-transparent hover:border-line-strong hover:bg-raised',
         )}
       >
         <span
           className={cn(
-            'font-mono text-[13px] font-medium tabular-nums',
+            'font-mono text-body font-medium tabular-nums',
             isSelected ? 'text-signal' : 'text-ink',
           )}
         >
           {rung.tier}
         </span>
 
-        <span className="font-mono text-[11px] text-ink-faint">{rung.codec}</span>
+        <span className="font-mono text-data text-ink-faint">{rung.codec}</span>
 
         {/* Bar length is filesize. This is the whole point of the ladder. */}
-        <span className="flex h-1.5 items-center overflow-hidden rounded-full bg-surround">
+        <span className="flex h-1.5 items-center overflow-hidden rounded-full bg-bg">
           <span
             className={cn(
               'h-full rounded-full transition-colors duration-100',
-              isSelected ? 'bg-signal' : 'bg-rule-bright group-hover:bg-ink-faint',
+              isSelected ? 'bg-signal' : 'bg-line-strong group-hover:bg-ink-faint',
             )}
             style={{ width: `${widthPct}%` }}
           />
         </span>
 
-        <span className="text-right font-mono text-[11px] tabular-nums text-ink-dim">
+        <span className="text-right font-mono text-data tabular-nums text-ink-dim">
           {formatSize(rung.size)}
         </span>
       </button>
@@ -185,13 +187,13 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
 
       {audio && (
         <>
-          <div className="h-px bg-rule" />
+          <div className="h-px bg-line" />
           <div className="space-y-0.5">{renderRung(audio, video.length)}</div>
         </>
       )}
 
       {!ffmpegAvailable && (
-        <p className="text-[12px] text-fault">
+        <p className="text-small text-bad">
           ffmpeg isn't installed, so video and audio can't be combined. Only pre-merged formats will work.
         </p>
       )}

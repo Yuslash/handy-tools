@@ -10,11 +10,15 @@ export type BackendStatus =
   | { state: 'ready'; port: number }
   | { state: 'failed'; reason: string }
 
+/** Which tool a log line belongs to. 'system' is app and backend lifecycle. */
+export type LogScope = 'system' | 'download' | 'clip' | 'segment' | 'inspect' | 'gif'
+
 export interface LogLine {
   at: number
   source: 'app' | 'backend'
   level: 'info' | 'error'
   text: string
+  scope?: LogScope
 }
 
 let port = 8000

@@ -15,29 +15,48 @@
   measured facts (native vs upscaled, ok vs failed) and never used decoratively.
 */
 @theme {
-  --color-surround: #1c1f26;
-  --color-bench: #23272f;
-  --color-raised: #2b303a;
-  --color-rule: #333945;
-  --color-rule-bright: #454d5c;
+  /* Nine-step neutral ramp. Surfaces step up as they come forward. */
+  --color-bg: #14171c;
+  --color-surface: #1a1e24;
+  --color-raised: #22272f;
+  --color-overlay: #2a303a;
+  --color-line: #313845;
+  --color-line-strong: #414a59;
+  --color-ink-faint: #6e7887;
+  --color-ink-dim: #9aa4b2;
+  --color-ink: #e8ecf1;
 
+  /* The one accent: VU-meter amber. Primary action and current selection only. */
   --color-signal: #e8a33d;
-  --color-signal-dim: #a97722;
-
-  --color-ink: #edeff3;
-  --color-ink-dim: #939aa8;
-  --color-ink-faint: #6b7280;
+  --color-signal-hover: #f0b155;
+  --color-signal-active: #d3902f;
+  --color-signal-ink: #1a1206;
 
   /* Data only. Never decoration. */
-  --color-true: #5fbf8f;
-  --color-fault: #e0655b;
+  --color-ok: #4fb286;
+  --color-warn: #e8a33d;
+  --color-bad: #d9534f;
 
   --font-display: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
 
-  --radius-sm: 3px;
-  --radius-md: 5px;
+  /* Six sizes. There is no seventh, and nothing goes below 11px. */
+  --text-label: 11px;
+  --text-label--line-height: 14px;
+  --text-small: 12px;
+  --text-small--line-height: 17px;
+  --text-data: 12px;
+  --text-data--line-height: 17px;
+  --text-body: 13px;
+  --text-body--line-height: 19px;
+  --text-section: 15px;
+  --text-section--line-height: 20px;
+  --text-title: 20px;
+  --text-title--line-height: 26px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: 8px;
 }
 
@@ -50,11 +69,14 @@ body,
 body {
   margin: 0;
   overflow: hidden;
-  background-color: var(--color-surround);
+  background-color: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
   font-synthesis-weight: none;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Frameless-window drag regions. */
@@ -68,43 +90,49 @@ body {
 
 @layer components {
   /*
-    The panel is the workbench surface: a raised plane with a hairline edge and a
-    single-pixel top highlight, the way a physical instrument face catches light.
+    A raised plane with a hairline edge and a single-pixel top highlight, the way
+    an instrument face catches light. No drop shadow — this is a lit surface,
+    not a card floating over a page.
   */
   .panel {
-    background-color: var(--color-bench);
-    border: 1px solid var(--color-rule);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
     border-radius: var(--radius-lg);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.04),
-      0 1px 2px rgb(0 0 0 / 0.3);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
   }
 
-  /* Small-caps machine label. Used for field names, never for prose. */
+  /* Machine label. Field names and column headers, never prose. */
   .label {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-label);
+    line-height: var(--text-label--line-height);
     font-weight: 500;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
   }
 
   .field {
-    background-color: var(--color-surround);
-    border: 1px solid var(--color-rule);
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-line);
     border-radius: var(--radius-md);
     color: var(--color-ink);
     font-family: var(--font-mono);
-    font-size: 13px;
-    padding: 9px 11px;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    /* 34px tall, matching a md button so they align on one row. */
+    padding: 7px 12px;
     width: 100%;
     outline: none;
-    transition: border-color 120ms ease;
+    transition: border-color 150ms cubic-bezier(0.2, 0.7, 0.3, 1);
   }
 
   .field::placeholder {
     color: var(--color-ink-faint);
+  }
+
+  .field:hover {
+    border-color: var(--color-line-strong);
   }
 
   .field:focus-visible {
@@ -130,18 +158,20 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-rule);
-  border: 3px solid var(--color-surround);
+  background: var(--color-line);
+  border: 3px solid transparent;
+  background-clip: content-box;
   border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-rule-bright);
+  background: var(--color-line-strong);
+  background-clip: content-box;
 }
 
 ::selection {
   background: var(--color-signal);
-  color: #1a1206;
+  color: var(--color-signal-ink);
 }
 
 /*

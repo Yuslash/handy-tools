@@ -1,33 +1,34 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, FolderSearch, RotateCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, FolderSearch, RotateCw, Trash2 } from 'lucide-react'
 import { Button } from './ui/Button'
 import { cn } from '../lib/utils'
-import type { LogLine } from '../lib/backend'
+import { useToolLog } from '../state/logs'
+import type { LogScope } from '../lib/backend'
 
 /**
- * Backend output, in the app.
+ * What this tool is doing, in the app.
  *
- * This used to go only to a console the user never sees, so a backend that
- * failed to start looked identical to one that was merely slow.
+ * Scoped: a screen shows its own events plus backend and app lifecycle, never
+ * another tool's chatter. Backend lines stay visible everywhere because a
+ * backend failure is usually the reason a tool failed.
  */
-export function LogPanel({ defaultOpen = false }: { defaultOpen?: boolean }) {
+export function LogPanel({
+  scope,
+  defaultOpen = false,
+}: {
+  scope: LogScope
+  defaultOpen?: boolean
+}) {
   const [open, setOpen] = useState(defaultOpen)
-  const [lines, setLines] = useState<LogLine[]>([])
   const [restarting, setRestarting] = useState(false)
+  const { lines, clear } = useToolLog(scope)
   const endRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    window.bench?.getLogs().then(setLines).catch(() => {})
-    return window.bench?.onLog((line) => {
-      setLines((prev) => [...prev.slice(-499), line])
-    })
-  }, [])
 
   useEffect(() => {
     if (open) endRef.current?.scrollIntoView({ block: 'end' })
   }, [lines, open])
 
-  const errorCount = lines.filter((l) => l.level === 'error').length
+  const errors = lines.filter((l) => l.level === 'error').length
 
   const restart = async () => {
     setRestarting(true)
@@ -40,53 +41,63 @@ export function LogPanel({ defaultOpen = false }: { defaultOpen?: boolean }) {
 
   return (
     <div className="panel overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2">
+      <div className="flex items-center gap-2 px-4 py-2">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="flex flex-1 items-center gap-1.5 text-left"
+          className="flex flex-1 items-center gap-2 text-left"
           aria-expanded={open}
         >
           {open ? (
-            <ChevronDown size={13} className="text-ink-faint" />
+            <ChevronDown size={14} className="text-ink-faint" />
           ) : (
-            <ChevronRight size={13} className="text-ink-faint" />
+            <ChevronRight size={14} className="text-ink-faint" />
           )}
-          <span className="label">Log</span>
-          <span className="font-mono text-[10px] text-ink-faint">
-            {lines.length} line{lines.length === 1 ? '' : 's'}
-            {errorCount > 0 && <span className="text-fault"> · {errorCount} error{errorCount === 1 ? '' : 's'}</span>}
+          <span className="label">Activity</span>
+          <span className="font-mono text-label text-ink-faint">
+            {lines.length}
+            {errors > 0 && <span className="text-bad"> · {errors} error{errors === 1 ? '' : 's'}</span>}
           </span>
         </button>
 
-        <Button size="sm" variant="quiet" onClick={restart} disabled={restarting}>
-          <RotateCw size={11} className={restarting ? 'animate-spin' : undefined} />
+        {lines.length > 0 && (
+          <Button size="sm" variant="ghost" onClick={clear} aria-label="Clear this log">
+            <Trash2 size={12} /> Clear
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={restart} disabled={restarting}>
+          <RotateCw size={12} className={restarting ? 'animate-spin' : undefined} />
           {restarting ? 'Restarting' : 'Restart backend'}
         </Button>
-        <Button size="sm" variant="quiet" onClick={() => window.bench?.showLogFile()}>
-          <FolderSearch size={11} /> Log file
+        <Button size="sm" variant="ghost" onClick={() => window.bench?.showLogFile()}>
+          <FolderSearch size={12} /> File
         </Button>
       </div>
 
       {open && (
-        <div className="max-h-64 overflow-auto border-t border-rule bg-surround px-3 py-2">
+        <div className="max-h-72 overflow-auto border-t border-line bg-bg px-4 py-3">
           {lines.length === 0 ? (
-            <p className="font-mono text-[11px] text-ink-faint">Nothing logged yet.</p>
+            <p className="font-mono text-data text-ink-faint">Nothing yet.</p>
           ) : (
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {lines.map((line, i) => (
-                <div key={i} className="flex gap-2 font-mono text-[11px] leading-relaxed">
-                  <span className="shrink-0 text-ink-faint tabular-nums">
+                <div key={i} className="flex gap-3 font-mono text-data">
+                  <span className="shrink-0 tabular-nums text-ink-faint">
                     {new Date(line.at).toLocaleTimeString([], { hour12: false })}
                   </span>
                   <span
                     className={cn(
-                      'shrink-0',
-                      line.source === 'backend' ? 'text-signal-dim' : 'text-ink-faint',
+                      'w-16 shrink-0',
+                      line.source === 'backend' ? 'text-signal' : 'text-ink-faint',
                     )}
                   >
-                    {line.source === 'backend' ? 'backend' : 'app'}
+                    {line.source === 'backend' ? 'backend' : (line.scope ?? 'app')}
                   </span>
-                  <span className={cn('min-w-0 break-all', line.level === 'error' ? 'text-fault' : 'text-ink-dim')}>
+                  <span
+                    className={cn(
+                      'min-w-0 break-all',
+                      line.level === 'error' ? 'text-bad' : 'text-ink-dim',
+                    )}
+                  >
                     {line.text}
                   </span>
                 </div>

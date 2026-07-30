@@ -70,6 +70,15 @@ app.include_router(gif_router, prefix="/api")
 FFMPEG_AVAILABLE = check_ffmpeg()
 print(f"[Startup] FFmpeg available: {FFMPEG_AVAILABLE}", flush=True)
 
+# Prefer AAC audio whenever the result is muxed into MP4.
+#
+# "bestaudio" often resolves to Opus, which is higher bitrate but which most
+# Windows players cannot decode inside an MP4 container — the file plays with no
+# sound at all. AAC (mp4a) is universally supported, so it wins here; the plain
+# bestaudio fallback only applies when a source offers nothing else.
+MP4_SAFE_FORMAT = 'bestvideo+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best'
+
+
 def tidy_error(e):
     """Strip yt-dlp's ANSI codes and 'ERROR:' prefix so the UI can show the message as-is."""
     msg = re.sub(r'\x1b\[[0-9;]*m', '', str(e)).strip()
@@ -343,15 +352,10 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
     # Apply download ranges if this is a clip
     if download_ranges:
         ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, download_ranges)
-        # Force 4K selection for clips if not audio-only
         if not audio_only and FFMPEG_AVAILABLE:
-            # Match user's working script configuration exactly
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['format'] = MP4_SAFE_FORMAT
             ydl_opts['force_keyframes_at_cuts'] = False
-            # Remove explicit merge format to let yt-dlp choose optimal container
-            # Enforce MP4 merge specifically for clips to ensure audio is widely compatible
             ydl_opts['merge_output_format'] = 'mp4'
-            print("[Clip] Using proven working configuration (MP4 merge, no forced keyframes)")
     
     # Handle audio-only downloads
     if audio_only:
@@ -372,13 +376,14 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
             # If we set a specific format for ranges/clips, don't overwrite it unless necessary
             if not download_ranges:
                 if format_id and format_id != 'bestvideo+bestaudio/best':
-                     # If user selected a specific format, try to respect it but ensure audio
-                    ydl_opts['format'] = f'{format_id}+bestaudio/best'
+                    # Respect the chosen video stream, but keep audio MP4-safe.
+                    ydl_opts['format'] = (
+                        f'{format_id}+bestaudio[acodec^=mp4a]/'
+                        f'{format_id}+bestaudio/best'
+                    )
                 else:
-                    # Default: Best quality (4K) using user's proven format string
-                    ydl_opts['format'] = 'bestvideo[height>=2160]+bestaudio/bestvideo+bestaudio/best'
-            
-            # We still prefer MP4 container for compatibility where possible
+                    ydl_opts['format'] = MP4_SAFE_FORMAT
+
             ydl_opts['merge_output_format'] = 'mp4'
         else:
             # Without FFmpeg, prefer pre-merged formats
@@ -391,11 +396,29 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
     download_error = None
     
     # Run download in a thread
+    def run_ytdl():
+        """Download, retrying without cookies if the jar turns out to be stale."""
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
+        except Exception as e:
+            has_cookies = ydl_opts.get('cookiefile') or ydl_opts.get('cookiesfrombrowser')
+            if not has_cookies or not backend.looks_like_stale_cookies(e):
+                raise
+
+            progress_queue.put({
+                "type": "info",
+                "message": "Cookies are stale — retrying signed out. Re-export cookies.txt for private videos.",
+            })
+            ydl_opts.pop('cookiefile', None)
+            ydl_opts.pop('cookiesfrombrowser', None)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
+
     def do_download():
         nonlocal download_error
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+            info = run_ytdl()
 
             # Resolve the final path *after* any merge/postprocessing, so the UI
             # gets the file that actually exists on disk.

@@ -28,16 +28,16 @@ export function TimeRange({
 
       <div className="flex items-center gap-2">
         <input
-          className={cn('field text-center', invalid && 'border-fault')}
+          className={cn('field text-center', invalid && 'border-bad')}
           value={start}
           onChange={(e) => onStart(e.target.value)}
           placeholder="00:00:00"
           aria-label="Start time"
           spellCheck={false}
         />
-        <span className="h-px w-4 shrink-0 bg-rule-bright" aria-hidden />
+        <span className="h-px w-4 shrink-0 bg-line-strong" aria-hidden />
         <input
-          className={cn('field text-center', invalid && 'border-fault')}
+          className={cn('field text-center', invalid && 'border-bad')}
           value={end}
           onChange={(e) => onEnd(e.target.value)}
           placeholder="00:01:30"
@@ -46,7 +46,7 @@ export function TimeRange({
         />
       </div>
 
-      {invalid && <p className="text-[12px] text-fault">The end time must come after the start time.</p>}
+      {invalid && <p className="text-small text-bad">The end time must come after the start time.</p>}
     </div>
   )
 }

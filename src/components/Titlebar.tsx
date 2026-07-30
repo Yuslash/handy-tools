@@ -7,21 +7,21 @@ export function Titlebar() {
 
   const status = {
     starting: { color: 'bg-signal', text: 'Starting backend' },
-    ready: { color: 'bg-true', text: 'Backend ready' },
-    failed: { color: 'bg-fault', text: 'Backend not running' },
+    ready: { color: 'bg-ok', text: 'Backend ready' },
+    failed: { color: 'bg-bad', text: 'Backend not running' },
   }[backend.state]
 
   return (
-    <header className="draggable flex h-9 shrink-0 items-center justify-between border-b border-rule bg-surround pl-3">
+    <header className="draggable flex h-9 shrink-0 items-center justify-between border-b border-line bg-bg pl-3">
       <div className="flex items-center gap-3">
-        <span className="font-display text-[13px] font-semibold tracking-tight text-ink">Bench</span>
-        <span className="h-3 w-px bg-rule" />
+        <span className="font-display text-body font-semibold tracking-tight text-ink">Bench</span>
+        <span className="h-3 w-px bg-line" />
         <span
           className="flex items-center gap-1.5"
           title={backend.state === 'failed' ? backend.reason : undefined}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${status.color}`} />
-          <span className="font-mono text-[10px] text-ink-faint">{status.text}</span>
+          <span className="font-mono text-label text-ink-faint">{status.text}</span>
         </span>
       </div>
 
@@ -43,7 +43,7 @@ export function Titlebar() {
         <button
           onClick={() => window.bench.close()}
           aria-label="Close"
-          className="flex h-9 w-11 items-center justify-center text-ink-dim transition-colors hover:bg-fault hover:text-white"
+          className="flex h-9 w-11 items-center justify-center text-ink-dim transition-colors hover:bg-bad hover:text-white"
         >
           <X size={14} />
         </button>

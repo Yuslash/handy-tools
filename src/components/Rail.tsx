@@ -22,7 +22,7 @@ export const tools: Tool[] = [
 
 export function Rail() {
   return (
-    <nav className="flex w-52 shrink-0 flex-col border-r border-rule bg-surround">
+    <nav className="flex w-52 shrink-0 flex-col border-r border-line bg-bg">
       <ul className="space-y-0.5 p-2">
         {tools.map(({ to, icon: Icon, name, blurb }) => (
           <li key={to}>
@@ -32,7 +32,7 @@ export function Rail() {
               title={blurb}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors duration-100',
+                  'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-body transition-colors duration-100',
                   isActive
                     ? 'bg-raised font-medium text-ink'
                     : 'text-ink-dim hover:bg-raised/60 hover:text-ink',
@@ -54,7 +54,7 @@ export function Rail() {
 
       <button
         onClick={() => window.bench.openDownloads()}
-        className="m-2 flex items-center gap-2 rounded-md px-2.5 py-2 text-[12px] text-ink-dim transition-colors hover:bg-raised hover:text-ink"
+        className="m-2 flex items-center gap-2 rounded-md px-2.5 py-2 text-small text-ink-dim transition-colors hover:bg-raised hover:text-ink"
       >
         <FolderOpen size={14} className="text-ink-faint" />
         Open Downloads

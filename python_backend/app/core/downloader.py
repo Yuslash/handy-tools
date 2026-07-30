@@ -81,6 +81,22 @@ def apply_cookies(ydl_opts):
     return ydl_opts
 
 
+# YouTube rotates session cookies, and a stale jar fails every request with one
+# of these rather than anything that mentions cookies. Anonymous access still
+# works, so it is far better to drop the cookies than to fail outright.
+STALE_COOKIE_SIGNS = (
+    'the page needs to be reloaded',
+    'sign in to confirm',
+    'please sign in',
+    'account cookies are no longer valid',
+)
+
+
+def looks_like_stale_cookies(error):
+    text = str(error).lower()
+    return any(sign in text for sign in STALE_COOKIE_SIGNS)
+
+
 def apply_js_runtime(ydl_opts):
     """Give yt-dlp a JS runtime for YouTube signature solving, if one exists."""
     node = find_node()
@@ -119,8 +135,21 @@ def get_video_info(url):
     apply_cookies(ydl_opts)
     apply_js_runtime(ydl_opts)
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        return ydl.extract_info(url, download=False)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(url, download=False)
+    except Exception as e:
+        if not (ydl_opts.get('cookiefile') or ydl_opts.get('cookiesfrombrowser')):
+            raise
+        if not looks_like_stale_cookies(e):
+            raise
+
+        print("[Cookies] Stale — retrying without them. Re-export cookies.txt "
+              "to restore access to private or age-restricted videos.", flush=True)
+        ydl_opts.pop('cookiefile', None)
+        ydl_opts.pop('cookiesfrombrowser', None)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(url, download=False)
 
 
 def list_available_formats(info):

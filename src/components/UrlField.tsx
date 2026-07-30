@@ -37,7 +37,7 @@ export function UrlField({
       />
       {action && (
         <Button
-          variant="signal"
+          variant="primary"
           onClick={onSubmit}
           disabled={busy || !value.trim() || disabled}
           className="shrink-0"

@@ -5,11 +5,14 @@ export type BackendStatus =
   | { state: 'ready'; port: number }
   | { state: 'failed'; reason: string }
 
+export type LogScope = 'system' | 'download' | 'clip' | 'segment' | 'inspect' | 'gif'
+
 export interface LogLine {
   at: number
   source: 'app' | 'backend'
   level: 'info' | 'error'
   text: string
+  scope?: LogScope
 }
 
 /**

@@ -6,6 +6,7 @@ import { GifPanel } from '../components/GifPanel'
 import { TimeRange, parseTimecode } from '../components/TimeRange'
 import { useGifConvert } from '../hooks/useGifConvert'
 import { cn } from '../lib/utils'
+import { useToolLog } from '../state/logs'
 
 const FPS_CHOICES = [10, 15, 20, 25]
 const WIDTH_CHOICES = [320, 480, 640, 800]
@@ -18,7 +19,8 @@ export function Gif() {
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
 
-  const gif = useGifConvert()
+  const gif = useGifConvert('gif')
+  const log = useToolLog('gif')
 
   const startSec = parseTimecode(start)
   const endSec = parseTimecode(end)
@@ -29,6 +31,7 @@ export function Gif() {
     if (!chosen) return
     setPath(chosen)
     gif.reset()
+    log.info(`Selected ${chosen}`)
   }
 
   const convert = () => {
@@ -42,15 +45,15 @@ export function Gif() {
   }
 
   return (
-    <Page title="GIF" description="Turn a video file into a GIF, with optional trimming.">
-      <div className="space-y-5">
+    <Page scope="gif" title="GIF" description="Turn a video file into a GIF, with optional trimming.">
+      <div className="space-y-6">
         <div className="flex gap-2">
           <div className="field flex flex-1 items-center overflow-hidden">
             <span className={cn('truncate', !path && 'text-ink-faint')}>
               {path || 'No file chosen'}
             </span>
           </div>
-          <Button variant="signal" onClick={choose} className="shrink-0">
+          <Button variant="primary" onClick={choose} className="shrink-0">
             <FileVideo size={14} /> Choose file
           </Button>
         </div>
@@ -65,7 +68,7 @@ export function Gif() {
             format={(v) => `${v} fps`}
           />
 
-          <div className="h-px bg-rule" />
+          <div className="h-px bg-line" />
 
           <ChoiceRow
             label="Width"
@@ -76,14 +79,14 @@ export function Gif() {
             format={(v) => `${v} px`}
           />
 
-          <div className="h-px bg-rule" />
+          <div className="h-px bg-line" />
 
           <TimeRange start={start} end={end} onStart={setStart} onEnd={setEnd} invalid={rangeInvalid} />
-          <p className="text-[12px] text-ink-faint">Leave the range empty to convert the whole file.</p>
+          <p className="text-small text-ink-faint">Leave the range empty to convert the whole file.</p>
         </div>
 
         <Button
-          variant="signal"
+          variant="primary"
           size="lg"
           className="w-full justify-center"
           onClick={convert}
@@ -129,10 +132,10 @@ function ChoiceRow({
             onClick={() => onChange(option)}
             aria-pressed={value === option}
             className={cn(
-              'flex-1 rounded-md border py-1.5 font-mono text-[12px] tabular-nums transition-colors duration-100',
+              'flex-1 rounded-md border py-1.5 font-mono text-small tabular-nums transition-colors duration-100',
               value === option
                 ? 'border-signal bg-signal/10 text-signal'
-                : 'border-rule text-ink-dim hover:border-rule-bright hover:text-ink',
+                : 'border-line text-ink-dim hover:border-line-strong hover:text-ink',
             )}
           >
             {format(option)}

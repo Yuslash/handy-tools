@@ -8,6 +8,7 @@ import { TransferReadout } from '../components/TransferReadout'
 import { Button } from '../components/ui/Button'
 import { useTransfers, useTransfer } from '../state/transfers'
 import { useGifConvert } from '../hooks/useGifConvert'
+import { useToolLog } from '../state/logs'
 
 /** Download only a chosen range of a long video, instead of the whole thing. */
 export function Segment() {
@@ -19,7 +20,8 @@ export function Segment() {
 
   const { start: beginTransfer, connected } = useTransfers()
   const transfer = useTransfer(transferId)
-  const gif = useGifConvert()
+  const gif = useGifConvert('segment')
+  const log = useToolLog('segment')
 
   const startSec = parseTimecode(start)
   const endSec = parseTimecode(end)
@@ -34,12 +36,14 @@ export function Segment() {
 
     setError('')
     gif.reset()
+    log.info(`Requesting ${start.trim()} → ${end.trim()} (${Math.round((endSec ?? 0) - (startSec ?? 0))}s)`)
 
     const id = beginTransfer({
       url: url.trim(),
       formatId: 'bestvideo+bestaudio',
       startTime: start.trim(),
       endTime: end.trim(),
+      scope: 'segment',
       source: 'Segment',
       label: `Segment ${start.trim()}–${end.trim()}`,
     })
@@ -50,32 +54,29 @@ export function Segment() {
   const busy = transfer?.status === 'downloading' || transfer?.status === 'merging'
 
   return (
-    <Page title="Segment" description="Cut a specific range out of a long video without downloading all of it.">
-      <div className="space-y-5">
+    <Page scope="segment" title="Segment" description="Cut a specific range out of a long video without downloading all of it.">
+      <div className="space-y-6">
         {/* No button here — the action lives with the range, below. */}
         <UrlField value={url} onChange={setUrl} onSubmit={download} />
 
         <div className="panel space-y-4 p-4">
           <TimeRange start={start} end={end} onStart={setStart} onEnd={setEnd} invalid={rangeInvalid} />
 
-          {startSec !== null && endSec !== null && !rangeInvalid && (
-            <p className="font-mono text-[11px] text-ink-faint">
-              Length {Math.round(endSec - startSec)}s
+          <div className="flex items-center justify-between border-t border-line pt-4">
+            <p className="font-mono text-data text-ink-faint">
+              {startSec !== null && endSec !== null && !rangeInvalid
+                ? `Length ${Math.round(endSec - startSec)}s`
+                : 'Set a start and end time'}
             </p>
-          )}
 
-          <Button
-            variant="signal"
-            className="w-full justify-center"
-            onClick={download}
-            disabled={!ready || busy || !connected}
-          >
-            <Crosshair size={14} />
-            {busy ? 'Downloading' : 'Download this range'}
-          </Button>
+            <Button variant="primary" onClick={download} disabled={!ready || busy || !connected}>
+              <Crosshair size={14} />
+              {busy ? 'Downloading' : 'Download range'}
+            </Button>
+          </div>
         </div>
 
-        {error && <p className="text-[13px] text-fault">{error}</p>}
+        {error && <p className="text-body text-bad">{error}</p>}
 
         {transfer && <TransferReadout transfer={transfer} />}
 

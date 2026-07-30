@@ -14,9 +14,9 @@ export function TransfersStrip() {
 
   if (transfers.length === 0) {
     return (
-      <div className="mt-auto border-t border-rule p-3">
+      <div className="mt-auto border-t border-line p-3">
         <p className="label">Transfers</p>
-        <p className="mt-1.5 text-[12px] leading-snug text-ink-faint">
+        <p className="mt-1.5 text-small leading-snug text-ink-faint">
           Downloads appear here and keep running while you switch tools.
         </p>
       </div>
@@ -26,13 +26,13 @@ export function TransfersStrip() {
   const finishedCount = transfers.filter((t) => t.status === 'done' || t.status === 'failed').length
 
   return (
-    <div className="mt-auto flex min-h-0 flex-col border-t border-rule">
+    <div className="mt-auto flex min-h-0 flex-col border-t border-line">
       <div className="flex items-center justify-between px-3 pb-1.5 pt-3">
         <p className="label">Transfers</p>
         {finishedCount > 0 && (
           <button
             onClick={clearFinished}
-            className="font-mono text-[10px] text-ink-faint transition-colors hover:text-ink"
+            className="font-mono text-label text-ink-faint transition-colors hover:text-ink"
           >
             Clear
           </button>
@@ -55,7 +55,7 @@ function TransferRow({ transfer, onDismiss }: { transfer: Transfer; onDismiss: (
   return (
     <li className="group rounded-md px-1.5 py-1.5 hover:bg-raised">
       <div className="flex items-start justify-between gap-1.5">
-        <p className="line-clamp-1 flex-1 text-[12px] leading-snug text-ink" title={label}>
+        <p className="line-clamp-1 flex-1 text-small leading-snug text-ink" title={label}>
           {label}
         </p>
         <button
@@ -69,13 +69,13 @@ function TransferRow({ transfer, onDismiss }: { transfer: Transfer; onDismiss: (
 
       {inFlight && (
         <>
-          <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-surround">
+          <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-bg">
             <div
               className="h-full rounded-full bg-signal transition-[width] duration-200"
               style={{ width: `${percent}%` }}
             />
           </div>
-          <p className="mt-1 font-mono text-[10px] tabular-nums text-ink-faint">
+          <p className="mt-1 font-mono text-label tabular-nums text-ink-faint">
             {status === 'merging' ? (note ?? 'Merging…') : `${percent.toFixed(0)}%${speed ? ` · ${speed}` : ''}`}
           </p>
         </>
@@ -84,14 +84,14 @@ function TransferRow({ transfer, onDismiss }: { transfer: Transfer; onDismiss: (
       {status === 'done' && (
         <button
           onClick={() => filePath && window.bench.revealFile(filePath)}
-          className="mt-0.5 flex items-center gap-1 font-mono text-[10px] text-true transition-colors hover:text-ink"
+          className="mt-0.5 flex items-center gap-1 font-mono text-label text-ok transition-colors hover:text-ink"
         >
           <FolderSearch size={10} /> Saved — show file
         </button>
       )}
 
       {status === 'failed' && (
-        <p className={cn('mt-0.5 font-mono text-[10px] leading-snug text-fault')} title={error}>
+        <p className={cn('mt-0.5 font-mono text-label leading-snug text-bad')} title={error}>
           {error}
         </p>
       )}

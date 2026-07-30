@@ -8,22 +8,22 @@ export function TransferReadout({ transfer }: { transfer: Transfer }) {
 
   if (status === 'failed') {
     return (
-      <div className="panel space-y-1 p-3">
+      <div className="panel space-y-2 p-4">
         <span className="label">Failed</span>
-        <p className="text-[13px] leading-relaxed text-fault">{error}</p>
+        <p className="text-body leading-relaxed text-bad">{error}</p>
       </div>
     )
   }
 
   if (status === 'done') {
     return (
-      <div className="panel space-y-2 p-3">
+      <div className="panel space-y-3 p-4">
         <div className="flex items-center justify-between">
           <span className="label">Saved</span>
-          <span className="font-mono text-[11px] text-true">Complete</span>
+          <span className="font-mono text-data text-ok">Complete</span>
         </div>
         {filePath && (
-          <p className="break-all font-mono text-[11px] leading-relaxed text-ink-dim">{filePath}</p>
+          <p className="break-all font-mono text-data leading-relaxed text-ink-dim">{filePath}</p>
         )}
         <Button size="sm" onClick={() => filePath && window.bench.revealFile(filePath)}>
           <FolderSearch size={12} /> Show file
@@ -35,15 +35,15 @@ export function TransferReadout({ transfer }: { transfer: Transfer }) {
   const merging = status === 'merging'
 
   return (
-    <div className="panel space-y-2 p-3">
+    <div className="panel space-y-3 p-4">
       <div className="flex items-center justify-between">
         <span className="label">{merging ? 'Merging' : 'Downloading'}</span>
-        <span className="font-mono text-[11px] tabular-nums text-signal">
+        <span className="font-mono text-data tabular-nums text-signal">
           {merging ? '—' : `${percent.toFixed(1)}%`}
         </span>
       </div>
 
-      <div className="relative h-1 overflow-hidden rounded-full bg-surround">
+      <div className="relative h-1 overflow-hidden rounded-full bg-bg">
         {merging ? (
           // Merging has no percentage to report, so show motion, not a fake number.
           <div className="animate-sweep absolute inset-y-0 w-1/3 rounded-full bg-signal/70" />
@@ -55,7 +55,7 @@ export function TransferReadout({ transfer }: { transfer: Transfer }) {
         )}
       </div>
 
-      <p className="font-mono text-[11px] tabular-nums text-ink-faint">
+      <p className="font-mono text-data tabular-nums text-ink-faint">
         {merging
           ? (note ?? 'Combining video and audio…')
           : [speed, eta && eta !== 'N/A' && `${eta} left`].filter(Boolean).join(' · ') || 'Starting…'}

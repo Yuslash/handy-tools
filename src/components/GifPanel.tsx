@@ -25,12 +25,12 @@ export function GifPanel({
 
   if (state.status === 'done') {
     return (
-      <div className="panel space-y-2 p-3">
+      <div className="panel space-y-3 p-4">
         <div className="flex items-center justify-between">
           <span className="label">GIF</span>
-          <span className="font-mono text-[11px] text-true">Saved</span>
+          <span className="font-mono text-data text-ok">Saved</span>
         </div>
-        <p className="break-all font-mono text-[11px] leading-relaxed text-ink-dim">{state.outputPath}</p>
+        <p className="break-all font-mono text-data leading-relaxed text-ink-dim">{state.outputPath}</p>
         <div className="flex gap-2">
           <Button
             size="sm"
@@ -38,7 +38,7 @@ export function GifPanel({
           >
             <FolderSearch size={12} /> Show file
           </Button>
-          <Button size="sm" variant="quiet" onClick={onReset}>
+          <Button size="sm" variant="ghost" onClick={onReset}>
             Make another
           </Button>
         </div>
@@ -48,12 +48,12 @@ export function GifPanel({
 
   if (state.status === 'failed') {
     return (
-      <div className="panel space-y-2 p-3">
+      <div className="panel space-y-3 p-4">
         <div className="flex items-center justify-between">
           <span className="label">GIF</span>
-          <span className="font-mono text-[11px] text-fault">Failed</span>
+          <span className="font-mono text-data text-bad">Failed</span>
         </div>
-        <p className="text-[12px] leading-relaxed text-fault">{state.message}</p>
+        <p className="text-small leading-relaxed text-bad">{state.message}</p>
         <Button size="sm" onClick={onReset}>
           Try again
         </Button>
@@ -62,20 +62,20 @@ export function GifPanel({
   }
 
   return (
-    <div className="panel space-y-2 p-3">
+    <div className="panel space-y-3 p-4">
       <div className="flex items-center justify-between">
         <span className="label">Converting to GIF</span>
-        <span className="font-mono text-[11px] tabular-nums text-signal">
+        <span className="font-mono text-data tabular-nums text-signal">
           {state.percent.toFixed(0)}%
         </span>
       </div>
-      <div className="h-1 overflow-hidden rounded-full bg-surround">
+      <div className="h-1 overflow-hidden rounded-full bg-bg">
         <div
           className="h-full rounded-full bg-signal transition-[width] duration-200"
           style={{ width: `${state.percent}%` }}
         />
       </div>
-      <p className="font-mono text-[11px] text-ink-faint">{state.message}</p>
+      <p className="font-mono text-data text-ink-faint">{state.message}</p>
     </div>
   )
 }
