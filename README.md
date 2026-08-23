@@ -11,13 +11,10 @@ Electron and React on the front, a Python/FastAPI sidecar wrapping yt-dlp, ffmpe
 ### 1. Camera Zoom & Animation Studio
 ![Camera Zoom Studio](preview/zoom_studio.png)
 
-### 2. Moveable Screen Recorder & Mini Widget
+### 2. Moveable Floating Screen Recording Widget
 ![Screen Recorder](preview/screen_recorder.png)
 
-### 3. Interactive Bézier Graph Curve Editor
-![Bézier Editor](preview/bezier_editor.png)
-
-### 4. Precision Animation Speed & Duration Controls
+### 3. Precision Animation Speed & Duration Controls
 ![Animation Speed Controls](preview/speed_controls.png)
 
 ---
