@@ -8,3 +8,4 @@ class GifRequest(BaseModel):
     fps: int = 15
     width: int = 480
     output_path: Optional[str] = None
+    high_quality: bool = True

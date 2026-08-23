@@ -66,6 +66,18 @@ except ImportError:
     from python_backend.app.api.gif_converter import router as gif_router
 app.include_router(gif_router, prefix="/api")
 
+try:
+    from app.api.video_editor import router as editor_router
+except ImportError:
+    from python_backend.app.api.video_editor import router as editor_router
+app.include_router(editor_router, prefix="/api")
+
+try:
+    from app.api.record_tracker import router as record_tracker_router
+except ImportError:
+    from python_backend.app.api.record_tracker import router as record_tracker_router
+app.include_router(record_tracker_router, prefix="/api")
+
 # Check FFmpeg at startup
 FFMPEG_AVAILABLE = check_ffmpeg()
 print(f"[Startup] FFmpeg available: {FFMPEG_AVAILABLE}", flush=True)

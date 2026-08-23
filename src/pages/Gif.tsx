@@ -7,8 +7,8 @@ import { useGifConvert } from '../hooks/useGifConvert'
 import { cn } from '../lib/utils'
 import { useToolLog } from '../state/logs'
 import { useToolInputs } from '../state/inputs'
-const FPS_CHOICES = [10, 15, 20, 25]
-const WIDTH_CHOICES = [320, 480, 640, 800]
+const FPS_CHOICES = [15, 24, 30, 60]
+const WIDTH_CHOICES = [480, 640, 800, 1080]
 /** Convert a local video file to a GIF, optionally trimming to a range first. */
 export function Gif() {
   const { values, set, clear } = useToolInputs('gif')

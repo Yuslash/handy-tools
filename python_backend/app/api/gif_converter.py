@@ -6,183 +6,177 @@ import asyncio
 import queue
 import threading
 import json
+import shutil
+import subprocess
+import re
 from pathlib import Path
 from app.core.utils import parse_time_to_seconds
-from moviepy import VideoFileClip
-from proglog import ProgressBarLogger
 
 router = APIRouter()
 
 
-class GifProgressLogger(ProgressBarLogger):
-    """Custom logger to capture moviepy progress and send to a queue."""
-    
-    def __init__(self, progress_queue):
-        super().__init__()
-        self.progress_queue = progress_queue
-        self.last_percent = -1
-        self.finalizing_sent = False
-    
-    def callback(self, **changes):
-        """Called for any progress updates."""
-        # Debug output
-        # print(f"[GIF-Progress] callback changes: {changes}", flush=True)
-        
-        # Check for bar updates
-        for key, value in changes.items():
-            if key.startswith('bars') and isinstance(value, dict):
-                for bar_name, bar_data in value.items():
-                    if isinstance(bar_data, dict) and 'index' in bar_data and 'total' in bar_data:
-                        index = bar_data['index']
-                        total = bar_data['total']
-                        if total > 0:
-                            percentage = int((index / total) * 100)
-                            if percentage != self.last_percent:
-                                self.last_percent = percentage
-                                self.progress_queue.put({
-                                    "type": "progress",
-                                    "percent": percentage,
-                                    "frame": index,
-                                    "total_frames": total
-                                })
-    
-    def bars_callback(self, bar, attr, value, old_value=None):
-        """Called when progress bars are updated."""
-        # Debug: print all callbacks to see what we get
-        # print(f"[GIF-Progress] bars_callback: bar={bar}, attr={attr}, value={value}", flush=True)
-        
-        if attr == 'index' and bar in self.bars:
-            total = self.bars[bar].get('total', 0)
-            if total > 0:
-                percentage = int((value / total) * 100)
-                # Only send if percentage changed to reduce spam
-                if percentage != self.last_percent:
-                    self.last_percent = percentage
-                    self.progress_queue.put({
-                        "type": "progress",
-                        "percent": percentage,
-                        "frame": value,
-                        "total_frames": total
-                    })
-                
-                if percentage == 100 and not self.finalizing_sent:
-                    self.finalizing_sent = True
-                    self.progress_queue.put({"type": "status", "message": "Finalizing GIF..."})
+def _find_ffmpeg() -> str | None:
+    return shutil.which("ffmpeg")
 
 
-def process_gif_conversion_with_progress(file_path: str, output_path: str, start_time: str, end_time: str, fps: int, width: int, progress_queue: queue.Queue):
-    """
-    Synchronous function to handle MoviePy processing with progress reporting.
-    Uses manual frame iteration for accurate progress tracking.
-    """
-    clip = None
+def _get_video_duration(file_path: str, ffmpeg_bin: str) -> float | None:
     try:
-        progress_queue.put({"type": "status", "message": "Loading video file..."})
-        
-        # Load the videofile
-        clip = VideoFileClip(file_path)
-        
-        # Handle Subclipping
-        start_sec = 0
-        end_sec = clip.duration
-        
-        if start_time and start_time.strip():
-            converted_start = parse_time_to_seconds(start_time)
-            if converted_start is not None:
-                start_sec = converted_start
+        cmd = [ffmpeg_bin, "-i", file_path]
+        res = subprocess.run(
+            cmd,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", res.stderr)
+        if m:
+            h, mn, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+            return h * 3600 + mn * 60 + s
+    except Exception:
+        pass
+    return None
 
-        if end_time and end_time.strip():
-            converted_end = parse_time_to_seconds(end_time)
-            if converted_end is not None:
-                end_sec = converted_end
-        
-        # Apply subclip if range is valid and different from full duration
-        if start_sec != 0 or end_sec != clip.duration:
-            end_sec = min(end_sec, clip.duration)
-            if start_sec < end_sec:
-                print(f"[GIF] Cutting clip: {start_sec} to {end_sec}")
-                progress_queue.put({"type": "status", "message": f"Trimming: {start_sec}s to {end_sec}s"})
-                clip = clip.subclipped(start_sec, end_sec)
-        
-        # Resize
-        if width and width > 0:
-            print(f"[GIF] Resizing to width: {width}px")
-            progress_queue.put({"type": "status", "message": f"Resizing to {width}px width..."})
-            clip = clip.resized(width=width)
-        
-        # Calculate total frames
-        total_frames = int(clip.duration * fps)
-        print(f"[GIF] Total frames to process: {total_frames} (duration: {clip.duration}s, fps: {fps})")
-        
-        progress_queue.put({"type": "status", "message": f"Converting {total_frames} frames to GIF..."})
-        
-        # Custom logger
-        logger = GifProgressLogger(progress_queue)
-        
-        # Use MoviePy's standard write_gif with our custom logger
-        clip.write_gif(output_path, fps=fps, logger=logger)
-        
-        print(f"[GIF] Successfully wrote GIF to {output_path}")
-        
-        progress_queue.put({
-            "type": "complete",
-            "output_path": output_path
-        })
-        
-        return True
-    except Exception as e:
-        print(f"[GIF] MoviePy Error: {e}")
-        progress_queue.put({
-            "type": "error",
-            "message": str(e)
-        })
-        raise e
-    finally:
-        if clip:
+
+def process_gif_conversion_with_progress(
+    file_path: str,
+    output_path: str,
+    start_time: str,
+    end_time: str,
+    fps: int,
+    width: int,
+    progress_queue: queue.Queue,
+    high_quality: bool = True,
+):
+    """
+    Convert video to high-quality palette-based GIF using FFmpeg with real-time SSE progress reporting.
+    Handles 60fps, custom resolutions, and WebM recordings flawlessly.
+    """
+    ffmpeg_bin = _find_ffmpeg()
+    
+    if ffmpeg_bin:
+        try:
+            progress_queue.put({"type": "status", "message": "Analyzing video stream..."})
+            
+            start_sec = parse_time_to_seconds(start_time) if start_time and str(start_time).strip() else None
+            end_sec = parse_time_to_seconds(end_time) if end_time and str(end_time).strip() else None
+            
+            duration = _get_video_duration(file_path, ffmpeg_bin)
+            
+            # Ensure width and height scaling (use -2 so height is rounded to an even integer)
+            if width and width > 0:
+                scale_filter = f"scale={width}:-2:flags=lanczos"
+            else:
+                scale_filter = "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos"
+                
+            fps_val = fps if fps and fps > 0 else 15
+            
+            # High-quality full palette generation vs standard palette
+            if high_quality:
+                palettegen_opts = "max_colors=256:stats_mode=full:reserve_transparent=0"
+                paletteuse_opts = "dither=floyd_steinberg:diff_mode=rectangle"
+            else:
+                palettegen_opts = "max_colors=192:stats_mode=diff"
+                paletteuse_opts = "dither=bayer:bayer_scale=4"
+            
+            vf = (
+                f"fps={fps_val},{scale_filter},split[s0][s1];"
+                f"[s0]palettegen={palettegen_opts}[p];"
+                f"[s1][p]paletteuse={paletteuse_opts}"
+            )
+            
+            cmd = [ffmpeg_bin, "-y"]
+            if start_sec is not None:
+                cmd.extend(["-ss", str(start_sec)])
+            if end_sec is not None:
+                cmd.extend(["-to", str(end_sec)])
+            
+            cmd.extend(["-i", file_path, "-vf", vf, output_path])
+            
+            total_sec = 10.0
+            if duration is not None and duration > 0:
+                s = start_sec or 0
+                e = min(end_sec, duration) if end_sec else duration
+                total_sec = max(0.5, e - s)
+            elif start_sec is not None and end_sec is not None and end_sec > start_sec:
+                total_sec = end_sec - start_sec
+            
+            dim_label = f"{width}px" if width and width > 0 else "Native"
+            quality_label = "High Quality (60fps)" if (high_quality and fps_val >= 60) else ("High Quality" if high_quality else "Standard")
+            progress_queue.put({"type": "status", "message": f"Rendering {fps_val} fps GIF [{dim_label}, {quality_label}]..."})
+            
+            proc = subprocess.Popen(
+                cmd,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            
+            time_pattern = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
+            last_percent = -1
+            
+            if proc.stderr:
+                for line in proc.stderr:
+                    m = time_pattern.search(line)
+                    if m:
+                        h, mn, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                        cur_sec = h * 3600 + mn * 60 + s
+                        pct = min(96, max(1, int((cur_sec / total_sec) * 100)))
+                        if pct != last_percent:
+                            last_percent = pct
+                            progress_queue.put({
+                                "type": "progress",
+                                "percent": pct,
+                                "message": f"Rendering frames… ({pct}%)",
+                            })
+            
+            proc.wait()
+            if proc.returncode != 0:
+                raise RuntimeError(f"FFmpeg conversion failed (exit code {proc.returncode})")
+            
+            progress_queue.put({
+                "type": "complete",
+                "output_path": output_path,
+            })
+            return True
+        except Exception as e:
+            print(f"[GIF] FFmpeg Error: {e}", flush=True)
+            progress_queue.put({
+                "type": "error",
+                "message": str(e),
+            })
+            raise e
+    else:
+        # Fallback to moviepy if ffmpeg is missing from PATH
+        try:
+            from moviepy import VideoFileClip
+            clip = VideoFileClip(file_path)
+            if width and width > 0:
+                clip = clip.resized(width=width)
+            clip.write_gif(output_path, fps=fps, logger=None)
             clip.close()
+            progress_queue.put({
+                "type": "complete",
+                "output_path": output_path,
+            })
+            return True
+        except Exception as e:
+            progress_queue.put({
+                "type": "error",
+                "message": str(e),
+            })
+            raise e
 
 
 def process_gif_conversion(file_path: str, output_path: str, start_time: str, end_time: str, fps: int, width: int):
-    """
-    Synchronous function to handle MoviePy processing (legacy, no progress).
-    """
-    clip = None
-    try:
-        clip = VideoFileClip(file_path)
-        
-        start_sec = 0
-        end_sec = clip.duration
-        
-        if start_time and start_time.strip():
-            converted_start = parse_time_to_seconds(start_time)
-            if converted_start is not None:
-                start_sec = converted_start
-
-        if end_time and end_time.strip():
-            converted_end = parse_time_to_seconds(end_time)
-            if converted_end is not None:
-                end_sec = converted_end
-        
-        if start_sec != 0 or end_sec != clip.duration:
-            end_sec = min(end_sec, clip.duration)
-            if start_sec < end_sec:
-                print(f"[GIF] Cutting clip: {start_sec} to {end_sec}")
-                clip = clip.subclipped(start_sec, end_sec)
-        
-        if width and width > 0:
-            print(f"[GIF] Resizing to width: {width}px")
-            clip = clip.resized(width=width)
-            
-        print(f"[GIF] Writing GIF to {output_path} (FPS: {fps})")
-        clip.write_gif(output_path, fps=fps, logger=None)
-        
-        return True
-    except Exception as e:
-        print(f"[GIF] MoviePy Error: {e}")
-        raise e
-    finally:
-        if clip:
-            clip.close()
+    """Synchronous function to handle GIF processing."""
+    q = queue.Queue()
+    return process_gif_conversion_with_progress(
+        file_path, output_path, start_time, end_time, fps, width, q
+    )
 
 
 @router.post("/convert_gif_stream")
@@ -206,10 +200,8 @@ async def convert_to_gif_stream(request: GifRequest):
 
     progress_queue = queue.Queue()
     conversion_done = threading.Event()
-    conversion_error = None
 
     def run_conversion():
-        nonlocal conversion_error
         try:
             process_gif_conversion_with_progress(
                 request.file_path,
@@ -218,15 +210,15 @@ async def convert_to_gif_stream(request: GifRequest):
                 request.end_time,
                 request.fps,
                 request.width,
-                progress_queue
+                progress_queue,
+                high_quality=request.high_quality,
             )
         except Exception as e:
-            conversion_error = str(e)
+            print(f"[GIF] Conversion exception: {e}", flush=True)
         finally:
             conversion_done.set()
 
     async def event_generator():
-        # Start conversion in background thread
         thread = threading.Thread(target=run_conversion)
         thread.start()
 
@@ -248,14 +240,14 @@ async def convert_to_gif_stream(request: GifRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
 @router.post("/convert_gif")
 async def convert_to_gif(request: GifRequest):
-    """Legacy endpoint without progress (for backwards compatibility)."""
+    """Legacy endpoint without progress."""
     print(f"[GIF] Received request: {request}", flush=True)
     
     if not os.path.exists(request.file_path):
@@ -277,18 +269,12 @@ async def convert_to_gif(request: GifRequest):
             request.start_time,
             request.end_time,
             request.fps,
-            request.width
+            request.width,
         )
         
         return {
             "status": "success",
-            "output_path": request.output_path
+            "output_path": request.output_path,
         }
-    except OSError as e:
-        print(f"[GIF] Video Error: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid video file: {e}")
     except Exception as e:
-        import traceback
-        error_detail = traceback.format_exc()
-        print(error_detail)
         raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
