@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Download, Scissors, Crosshair, Gauge, Film, FolderOpen } from 'lucide-react'
+import { Download, Scissors, Crosshair, Gauge, Film, FolderOpen, Clapperboard, Radio } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { TransfersStrip } from './TransfersStrip'
@@ -14,10 +14,12 @@ interface Tool {
 
 export const tools: Tool[] = [
   { to: '/', icon: Download, name: 'Download', blurb: 'Save a video or its audio' },
+  { to: '/record', icon: Radio, name: 'Screen Record', blurb: 'Record screen & make a GIF' },
   { to: '/clip', icon: Scissors, name: 'Clip', blurb: 'Full quality from a YouTube clip' },
   { to: '/segment', icon: Crosshair, name: 'Segment', blurb: 'Cut a range from a long video' },
   { to: '/inspect', icon: Gauge, name: 'Inspect', blurb: 'Check if a file is really 4K' },
   { to: '/gif', icon: Film, name: 'GIF', blurb: 'Turn a video into a GIF' },
+  { to: '/edit', icon: Clapperboard, name: 'Edit', blurb: 'Trim and crop a local video' },
 ]
 
 export function Rail() {

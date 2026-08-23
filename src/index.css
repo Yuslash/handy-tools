@@ -79,6 +79,13 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+body.overlay-mode,
+html.overlay-mode,
+body.overlay-mode #root {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
 /* Frameless-window drag regions. */
 .draggable {
   -webkit-app-region: drag;

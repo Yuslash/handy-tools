@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Titlebar } from './components/Titlebar'
 import { Rail } from './components/Rail'
+import { RecordOverlay } from './components/RecordOverlay'
 import { BackendProvider } from './state/backend'
 import { LogsProvider } from './state/logs'
 import { InputsProvider } from './state/inputs'
@@ -10,8 +11,23 @@ import { Clip } from './pages/Clip'
 import { Segment } from './pages/Segment'
 import { Inspect } from './pages/Inspect'
 import { Gif } from './pages/Gif'
+import { Edit } from './pages/Edit'
+import { Record } from './pages/Record'
 
 export default function App() {
+  const isOverlay = window.location.hash.includes('record-overlay')
+
+  if (isOverlay) {
+    return (
+      <HashRouter>
+        <Routes>
+          <Route path="/record-overlay" element={<RecordOverlay />} />
+          <Route path="*" element={<RecordOverlay />} />
+        </Routes>
+      </HashRouter>
+    )
+  }
+
   return (
     <BackendProvider>
       {/* Logs sit above transfers so download events can be recorded. */}
@@ -26,10 +42,13 @@ export default function App() {
                 <main className="min-w-0 flex-1">
                   <Routes>
                     <Route path="/" element={<Download />} />
+                    <Route path="/record" element={<Record />} />
                     <Route path="/clip" element={<Clip />} />
                     <Route path="/segment" element={<Segment />} />
                     <Route path="/inspect" element={<Inspect />} />
                     <Route path="/gif" element={<Gif />} />
+                    <Route path="/edit" element={<Edit />} />
+                    <Route path="/record-overlay" element={<RecordOverlay />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </main>

@@ -1,10 +1,16 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, desktopCapturer, screen, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { spawn, ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import http from 'node:http'
+
+// Prevent Chromium from throttling video/canvas rendering when main window is hidden
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -19,6 +25,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 const DEFAULT_PORT = 8000
 
 let win: BrowserWindow | null = null
+let overlayWin: BrowserWindow | null = null
 let pythonProcess: ChildProcess | null = null
 let backendPort = DEFAULT_PORT
 
@@ -55,7 +62,13 @@ function record(source: LogLine['source'], level: LogLine['level'], text: string
     logBuffer.push(entry)
     if (logBuffer.length > LOG_LIMIT) logBuffer.shift()
 
-    win?.webContents.send('backend-log', entry)
+    if (win && !win.isDestroyed()) {
+      try {
+        win.webContents.send('backend-log', entry)
+      } catch {
+        // window is destroyed or closing
+      }
+    }
     if (logFilePath) {
       try {
         fs.appendFileSync(logFilePath, `${new Date(entry.at).toISOString()} [${source}] ${trimmed}\n`)
@@ -73,7 +86,13 @@ function log(msg: string) {
 
 function setBackendStatus(status: BackendStatus) {
   backendStatus = status
-  win?.webContents.send('backend-status', status)
+  if (win && !win.isDestroyed()) {
+    try {
+      win.webContents.send('backend-status', status)
+    } catch {
+      // window is destroyed or closing
+    }
+  }
 }
 
 /**
@@ -240,6 +259,57 @@ function stopPythonBackend() {
   pythonProcess = null
 }
 
+function createOverlayWindow(): BrowserWindow {
+  if (overlayWin && !overlayWin.isDestroyed()) return overlayWin
+
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { x: screenX, y: screenY } = primaryDisplay.workArea
+
+  const width = 380
+  const height = 68
+  const x = Math.round(screenX + 24)
+  const y = Math.round(screenY + 24)
+
+  overlayWin = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    movable: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    hasShadow: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.mjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      backgroundThrottling: false,
+    },
+  })
+
+  overlayWin.setContentProtection(true)
+  overlayWin.setAlwaysOnTop(true, 'screen-saver')
+  overlayWin.setVisibleOnAllWorkspaces?.(true)
+
+  const overlayUrl = VITE_DEV_SERVER_URL
+    ? `${VITE_DEV_SERVER_URL}#/record-overlay`
+    : `file://${path.join(RENDERER_DIST, 'index.html')}#/record-overlay`
+
+  overlayWin.loadURL(overlayUrl)
+
+  overlayWin.on('closed', () => {
+    overlayWin = null
+  })
+
+  return overlayWin
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -254,6 +324,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
     },
   })
 
@@ -300,6 +371,13 @@ app.whenReady().then(() => {
   } catch {
     logFilePath = ''
   }
+
+  // Handle display media requests gracefully
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      callback({ video: sources[0] })
+    })
+  })
 
   ipcMain.on('minimize', () => win?.minimize())
   ipcMain.on('close', () => win?.close())
@@ -350,6 +428,61 @@ app.whenReady().then(() => {
       return true
     }
     return false
+  })
+
+  // Screen recording & overlay IPC handlers
+  ipcMain.handle('get-screen-sources', async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 160, height: 90 },
+      fetchWindowIcons: false,
+    })
+    return sources.map((s) => ({
+      id: s.id,
+      name: s.name,
+      thumbnail: s.thumbnail.toDataURL(),
+      display_id: s.display_id,
+    }))
+  })
+
+  ipcMain.handle('save-temp-recording', async (_, arrayBuffer: ArrayBuffer) => {
+    const tempDir = app.getPath('temp')
+    const filePath = path.join(tempDir, `screen_record_${Date.now()}.webm`)
+    await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer))
+    return filePath
+  })
+
+  ipcMain.handle('show-record-overlay', () => {
+    const oWin = createOverlayWindow()
+    oWin.show()
+    win?.hide()
+    return true
+  })
+
+  ipcMain.handle('hide-record-overlay', () => {
+    if (overlayWin && !overlayWin.isDestroyed()) {
+      overlayWin.hide()
+      overlayWin.close()
+      overlayWin = null
+    }
+    return true
+  })
+
+  ipcMain.handle('restore-main-window', () => {
+    if (win && !win.isDestroyed()) {
+      win.show()
+      win.focus()
+    }
+    return true
+  })
+
+  ipcMain.on('record-action', (event, action) => {
+    if (win && !win.isDestroyed() && event.sender !== win.webContents) {
+      win.webContents.send('record-action', action)
+    }
+    if (overlayWin && !overlayWin.isDestroyed() && event.sender !== overlayWin.webContents) {
+      overlayWin.webContents.send('record-action', action)
+    }
   })
 
   createWindow()

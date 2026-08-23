@@ -5,7 +5,7 @@ export type BackendStatus =
   | { state: 'ready'; port: number }
   | { state: 'failed'; reason: string }
 
-export type LogScope = 'system' | 'download' | 'clip' | 'segment' | 'inspect' | 'gif'
+export type LogScope = 'system' | 'download' | 'clip' | 'segment' | 'inspect' | 'gif' | 'edit' | 'record'
 
 export interface LogLine {
   at: number
@@ -13,6 +13,25 @@ export interface LogLine {
   level: 'info' | 'error'
   text: string
   scope?: LogScope
+}
+
+export interface ScreenSource {
+  id: string
+  name: string
+  thumbnail: string
+  display_id: string
+}
+
+export interface RecordAction {
+  type: 'start' | 'pause' | 'resume' | 'stop' | 'cancel' | 'status_update' | 'request_status'
+  payload?: {
+    status?: 'idle' | 'ready' | 'countdown' | 'recording' | 'paused' | 'converting' | 'done' | 'failed'
+    recording?: boolean
+    paused?: boolean
+    seconds?: number
+    maxSeconds?: number
+    countdown?: number
+  }
 }
 
 /**
@@ -54,6 +73,21 @@ const api = {
   selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('select-directory'),
   selectFile: (): Promise<string | null> => ipcRenderer.invoke('select-file'),
   revealFile: (filePath: string): Promise<boolean> => ipcRenderer.invoke('open-file-location', filePath),
+
+  // Screen recording & overlay IPC
+  getScreenSources: (): Promise<ScreenSource[]> => ipcRenderer.invoke('get-screen-sources'),
+  saveTempRecording: (buffer: ArrayBuffer): Promise<string> => ipcRenderer.invoke('save-temp-recording', buffer),
+  showRecordOverlay: (): Promise<boolean> => ipcRenderer.invoke('show-record-overlay'),
+  hideRecordOverlay: (): Promise<boolean> => ipcRenderer.invoke('hide-record-overlay'),
+  restoreMainWindow: (): Promise<boolean> => ipcRenderer.invoke('restore-main-window'),
+  sendRecordAction: (action: RecordAction): void => ipcRenderer.send('record-action', action),
+  onRecordAction: (cb: (action: RecordAction) => void) => {
+    const listener = (_e: unknown, action: RecordAction) => cb(action)
+    ipcRenderer.on('record-action', listener)
+    return () => {
+      ipcRenderer.off('record-action', listener)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('bench', api)

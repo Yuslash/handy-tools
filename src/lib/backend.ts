@@ -11,7 +11,7 @@ export type BackendStatus =
   | { state: 'failed'; reason: string }
 
 /** Which tool a log line belongs to. 'system' is app and backend lifecycle. */
-export type LogScope = 'system' | 'download' | 'clip' | 'segment' | 'inspect' | 'gif'
+export type LogScope = 'system' | 'download' | 'clip' | 'segment' | 'inspect' | 'gif' | 'edit' | 'record'
 
 export interface LogLine {
   at: number
@@ -29,6 +29,8 @@ export function setBackendPort(p: number) {
 
 export const httpBase = () => `http://127.0.0.1:${port}`
 export const wsUrl = () => `ws://127.0.0.1:${port}/api/ws`
+export const getVideoUrl = (filePath: string) =>
+  `${httpBase()}/api/stream_video?path=${encodeURIComponent(filePath)}`
 
 /** Thrown with a message that is safe to show the user as-is. */
 export class BackendError extends Error {}
@@ -99,6 +101,7 @@ export interface GifOptions {
   width: number
   start_time?: string
   end_time?: string
+  high_quality?: boolean
 }
 
 export type GifEvent =
@@ -150,3 +153,184 @@ export async function* convertToGif(options: GifOptions): AsyncGenerator<GifEven
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Video editor (Trim + Crop)
+// ---------------------------------------------------------------------------
+
+export interface TrimOptions {
+  file_path: string
+  start_time: string
+  end_time: string
+}
+
+export interface CropOptions {
+  file_path: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type EditEvent =
+  | { type: 'status'; message: string }
+  | { type: 'progress'; percent: number }
+  | { type: 'complete'; output_path: string }
+  | { type: 'error'; message: string }
+
+async function* streamEdit(path: string, body: unknown): AsyncGenerator<EditEvent> {
+  let res: Response
+  try {
+    res = await fetch(`${httpBase()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new BackendError("Can't reach the backend. It may still be starting.")
+  }
+
+  if (!res.ok || !res.body) {
+    throw new BackendError(`Operation could not start (${res.status}).`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data:')) continue
+      try {
+        yield JSON.parse(trimmed.slice(5)) as EditEvent
+      } catch {
+        // partial frame — next chunk completes it
+      }
+    }
+  }
+}
+
+export const trimVideo = (options: TrimOptions) => streamEdit('/api/edit/trim', options)
+export const cropVideo = (options: CropOptions) => streamEdit('/api/edit/crop', options)
+
+// ---------------------------------------------------------------------------
+// Screen Record (MP4 Conversion + Cursor/Hotkey Tracking)
+// ---------------------------------------------------------------------------
+
+export interface VideoConvertOptions {
+  file_path: string
+  fps: number
+  width: number
+  output_path?: string
+}
+
+export type RecordConvertEvent =
+  | { type: 'status'; message: string }
+  | { type: 'progress'; percent: number }
+  | { type: 'complete'; output_path: string }
+  | { type: 'error'; message: string }
+
+export async function* convertToVideo(
+  options: VideoConvertOptions,
+): AsyncGenerator<RecordConvertEvent> {
+  let res: Response
+  try {
+    res = await fetch(`${httpBase()}/api/record/convert_video_stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options),
+    })
+  } catch {
+    throw new BackendError("Can't reach the backend. It may still be starting.")
+  }
+
+  if (!res.ok || !res.body) {
+    throw new BackendError(`Video conversion could not start (${res.status}).`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data:')) continue
+      try {
+        yield JSON.parse(trimmed.slice(5)) as RecordConvertEvent
+      } catch {
+        // partial frame
+      }
+    }
+  }
+}
+
+export interface CursorTrackData {
+  x: number
+  y: number
+  pressed: boolean
+}
+
+export function startCursorTracker(
+  key: string,
+  onUpdate: (data: CursorTrackData) => void,
+): () => void {
+  const controller = new AbortController()
+
+  async function connect() {
+    try {
+      const res = await fetch(`${httpBase()}/api/record/track_stream?key=${encodeURIComponent(key)}`, {
+        signal: controller.signal,
+      })
+      if (!res.ok || !res.body) return
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed.startsWith('data:')) continue
+          try {
+            const data = JSON.parse(trimmed.slice(5)) as CursorTrackData
+            onUpdate(data)
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // aborted or network closed
+    }
+  }
+
+  connect()
+
+  return () => {
+    controller.abort()
+  }
+}
+

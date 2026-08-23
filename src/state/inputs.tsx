@@ -37,6 +37,34 @@ export interface GifInputs {
   start: string
   end: string
 }
+export interface EditTrimInputs {
+  path: string
+  start: string
+  end: string
+}
+export interface EditCropInputs {
+  path: string
+  x: string
+  y: string
+  width: string
+  height: string
+}
+export interface RecordInputs {
+  sourceId: string
+  fps: number
+  width: number
+  countdown: boolean
+  limitDuration: boolean
+  highQuality: boolean
+  format: 'gif' | 'video'
+  zoomEnabled: boolean
+  zoomFactor: number
+  zoomKey: string
+  zoomSpeed: number
+  zoomRadius: number
+  zoomBezier: [number, number, number, number]
+  zoomTriggerMode: 'hold' | 'toggle'
+}
 
 export interface InputState {
   download: DownloadInputs
@@ -44,6 +72,9 @@ export interface InputState {
   segment: SegmentInputs
   inspect: InspectInputs
   gif: GifInputs
+  'edit-trim': EditTrimInputs
+  'edit-crop': EditCropInputs
+  record: RecordInputs
 }
 
 export const EMPTY: InputState = {
@@ -52,6 +83,24 @@ export const EMPTY: InputState = {
   segment: { url: '', start: '', end: '' },
   inspect: { path: '' },
   gif: { path: '', fps: 15, width: 480, start: '', end: '' },
+  'edit-trim': { path: '', start: '', end: '' },
+  'edit-crop': { path: '', x: '0', y: '0', width: '', height: '' },
+  record: {
+    sourceId: '',
+    fps: 30,
+    width: 640,
+    countdown: true,
+    limitDuration: true,
+    highQuality: true,
+    format: 'gif',
+    zoomEnabled: true,
+    zoomFactor: 2.0,
+    zoomKey: 'ctrl',
+    zoomSpeed: 0.1,
+    zoomRadius: 16,
+    zoomBezier: [0.22, 1.0, 0.36, 1.0],
+    zoomTriggerMode: 'hold',
+  },
 }
 
 const STORAGE_KEY = 'bench.inputs.v1'
@@ -68,6 +117,9 @@ function load(): InputState {
       segment: { ...EMPTY.segment, ...saved.segment },
       inspect: { ...EMPTY.inspect, ...saved.inspect },
       gif: { ...EMPTY.gif, ...saved.gif },
+      'edit-trim': { ...EMPTY['edit-trim'], ...saved['edit-trim'] },
+      'edit-crop': { ...EMPTY['edit-crop'], ...saved['edit-crop'] },
+      record: { ...EMPTY.record, ...saved.record },
     }
   } catch {
     return EMPTY
