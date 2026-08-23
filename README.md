@@ -6,16 +6,60 @@ Electron and React on the front, a Python/FastAPI sidecar wrapping yt-dlp, ffmpe
 
 ---
 
-## 📸 Preview & Screenshots
+## 📸 App Tour & Screenshots
 
-### 1. Camera Zoom & Animation Studio
-![Camera Zoom Studio](preview/zoom_studio.png)
+### 1. Screen Recording & Camera Zoom Studio
+Record your screen at 15–60 FPS with automatic floating widget auto-hiding, smooth mouse follow magnification, and dual MP4/GIF export.
 
-### 2. Moveable Floating Screen Recording Widget
-![Screen Recorder](preview/screen_recorder.png)
+| Camera Zoom & Animation Studio | Moveable Recording Widget |
+|:---:|:---:|
+| ![Camera Zoom Studio](preview/zoom_studio.png) | ![Floating Record Widget](preview/screen_recorder.png) |
 
-### 3. Precision Animation Speed & Duration Controls
-![Animation Speed Controls](preview/speed_controls.png)
+| Screen Record Settings | Precision Speed & Duration |
+|:---:|:---:|
+| ![Record Settings](preview/record.png) | ![Speed Controls](preview/speed_controls.png) |
+
+---
+
+### 2. Video Editing (Lossless Trim & Visual Crop)
+Lossless stream copy trimming for instant cutdowns, plus interactive bounding-box cropping with standard aspect ratio presets (`16:9`, `9:16`, `1:1`, `4:3`).
+
+![Video Edit Tool](preview/edit.png)
+
+---
+
+### 3. Video & Audio Downloader
+Fetches every format a link offers and displays them as a visual size ladder. Pick individual resolutions up to 4K or extract audio as MP3.
+
+![Download Tool](preview/download.png)
+
+---
+
+### 4. YouTube Clip Range Extractor
+Give Bench a YouTube `/clip/` link, and it automatically discovers the source video to download the clip range at full native resolution.
+
+![Clip Tool](preview/clip.png)
+
+---
+
+### 5. Timecode Segment Cutter
+Cuts precise ranges out of long online videos by timecode without downloading the whole file.
+
+![Segment Tool](preview/segment.png)
+
+---
+
+### 6. Media Quality & Sharpness Inspector
+Inspects local video files: resolution, video codec, bitrate, audio sample rate, and an OpenCV Laplacian sharpness score to expose fake upscaled 4K footage.
+
+![Inspect Tool](preview/inspect.png)
+
+---
+
+### 7. High-Definition Animated GIF Converter
+Converts video files to optimized animated GIFs with custom palettes, variable frame rates (10–60 fps), and customizable width scaling.
+
+![GIF Converter](preview/gif.png)
 
 ---
 
