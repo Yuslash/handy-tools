@@ -1,10 +1,28 @@
 # Bench
 
-A desktop workbench for pulling video off the web and working with it locally.
-Electron and React on the front, a Python/FastAPI sidecar wrapping yt-dlp,
-ffmpeg and OpenCV on the back. Everything runs on your machine.
+A modern desktop workbench for pulling video off the web, editing footage locally, and recording screens with buttery-smooth Bézier zoom tracking.
 
-## The window
+Electron and React on the front, a Python/FastAPI sidecar wrapping yt-dlp, ffmpeg and OpenCV on the back. Everything runs locally on your machine.
+
+---
+
+## 📸 Preview & Screenshots
+
+### 1. Camera Zoom & Animation Studio
+![Camera Zoom Studio](preview/zoom_studio.png)
+
+### 2. Moveable Screen Recorder & Mini Widget
+![Screen Recorder](preview/screen_recorder.png)
+
+### 3. Interactive Bézier Graph Curve Editor
+![Bézier Editor](preview/bezier_editor.png)
+
+### 4. Precision Animation Speed & Duration Controls
+![Animation Speed Controls](preview/speed_controls.png)
+
+---
+
+## The Window Layout
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -15,78 +33,53 @@ ffmpeg and OpenCV on the back. Everything runs on your machine.
 │  Segment      │  ┌──────────────────────────────────────┐  │
 │  Inspect      │  │ Paste a video URL     [Fetch formats]│  │  Tool view
 │  GIF          │  └──────────────────────────────────────┘  │
-│               │  ┌──────────────────────────────────────┐  │
-│               │  │ FORMAT      BAR LENGTH = FILE SIZE   │  │  Format ladder
+│  Edit         │  ┌──────────────────────────────────────┐  │
+│  Record       │  │ FORMAT      BAR LENGTH = FILE SIZE   │  │  Format ladder
 │               │  │ 4K    vp9  ████████████     1.3 GB   │  │
 │               │  │ 1080p h264 █████             246 MB  │  │
 │               │  │              Selected 1080p [Download]│ │
+│  ───────────  │  └──────────────────────────────────────┘  │
+│  TRANSFERS    │  ┌──────────────────────────────────────┐  │
+│  ▸ clip.mp4   │  │ SAVED                     Complete   │  │  Result panel
+│    62% · 2MB/s│  │ C:\Users\…\clip.mp4      [Show file] │  │
 │               │  └──────────────────────────────────────┘  │
-│               │  ┌──────────────────────────────────────┐  │
-│  ───────────  │  │ SAVED                     Complete   │  │  Result panel
-│  TRANSFERS    │  │ C:\Users\…\clip.mp4      [Show file] │  │
-│  ▸ clip.mp4   │  └──────────────────────────────────────┘  │
-│    62% · 2MB/s│  ┌──────────────────────────────────────┐  │
-│               │  │ ▾ ACTIVITY 12 · 1 error   [Clear]…   │  │  Activity log
-│  Open Downloads  │ 22:16:06 backend  Uvicorn running…   │  │
+│  Open Downloads  │ ▾ ACTIVITY 12 · 0 errors   [Clear]…   │  │  Activity log
 └───────────────┴────────────────────────────────────────────┘
 ```
 
 ### 1. Title bar
 
-App name, a status dot, and the window controls. The dot is the real state of
-the Python backend, not decoration:
+App name, a real-time status dot, and window controls. The dot is the real state of the Python backend:
 
 | Dot | Meaning |
 |---|---|
-| Amber — *Starting backend* | Unpacking and launching. First run can take up to a minute. |
-| Green — *Backend ready* | Answering on its port. Tools are usable. |
-| Red — *Backend not running* | It failed. Hover for the reason; the Activity log has the detail. |
+| Amber — *Starting backend* | Launching local FastAPI sidecar. |
+| Green — *Backend ready* | Answering on port 8000. All tools operational. |
+| Red — *Backend not running* | Hover for error diagnostics; Activity log displays traceback. |
 
-### 2. Left rail
+---
 
-The five tools, plus the transfers list and a shortcut to your Downloads folder.
+### 2. Left Rail & Available Tools
 
-| Menu item | What it does |
+| Menu Item | Description |
 |---|---|
-| **Download** | Fetches every format a link offers and shows them as a ladder. Pick a resolution, or take the audio alone as MP3. |
-| **Clip** | YouTube renders clips at reduced quality. Give Bench a `/clip/` link and it finds the source video and downloads that range at full resolution. |
-| **Segment** | Cuts a range out of a long video by timecode, without downloading the whole thing. |
-| **Inspect** | Measures a local file: real resolution, codec, bitrate, and an OpenCV sharpness score that exposes footage upscaled to fake 4K. |
-| **GIF** | Converts a video file to a GIF at a chosen frame rate and width, with optional trimming. |
+| **Record** | Floating moveable screen recorder. Features **Smooth Cursor Zoom**, interactive **Bézier Easing Studio**, 15-60 FPS capture, and dual **MP4 / GIF** conversion. |
+| **Edit** | Lossless video trimmer (instant ffmpeg stream copy) and visual drag-and-drop crop bounding box editor with aspect ratio presets (`16:9`, `9:16`, `1:1`, `4:3`). |
+| **Download** | Fetches all available streams as a visual size ladder. Download single resolutions up to 4K or extract audio alone as MP3. |
+| **Clip** | Extracts full-resolution source video segments directly from YouTube `/clip/` links. |
+| **Segment** | Cuts precise ranges out of long online videos by timecode without downloading the full stream. |
+| **Inspect** | Measures local video metrics: resolution, codec, bitrate, and an OpenCV sharpness Laplacian score to detect fake upscales. |
+| **GIF** | Converts local videos to high-efficiency animated GIFs with custom palettes, fps, and widths. |
 
-**Transfers** sits below them and lists every download this session, across all
-tools. Downloads keep running while you switch tools — the list is the one place
-that shows all of them. Each row goes `downloading → merging → saved`, and a
-finished row reveals the file in Explorer. *Clear* removes the finished ones.
+---
 
-### 3. Tool view
+## 🎥 Camera Zoom Studio & Screen Recording Features
 
-The main area. Every tool has the same frame: a title, one line saying what it
-does, a **Clear** button, its own controls, then its Activity log.
-
-**What you type is kept.** URLs, file paths, timecodes and GIF options stay put
-when you switch tools and are still there after restarting the app — retyping a
-URL because you looked at another tool is pure friction. **Clear** in the header
-empties that one tool; the others keep theirs.
-
-Fetched results — the format ladder, an inspection report — survive switching
-tools but not a restart, because a stored format list goes stale and showing it
-again would be a lie.
-
-If the backend is not ready, the controls are replaced by a panel explaining why
-— so you never get buttons that silently do nothing.
-
-### 4. Panels
-
-| Panel | Appears in | Contents |
-|---|---|---|
-| **Format ladder** | Download | One rung per resolution. Bar length is file size on a square-root scale, so 4K still reads as much larger while 144p stays visible. Codec is shown per rung; audio is separated below a rule. The footer holds the selection and the Download button. |
-| **Range** | Segment, GIF | Start and end timecode, `hh:mm:ss` or plain seconds. Shows the resulting length and rejects an end before the start. |
-| **GIF options** | GIF | Frame rate (10 / 15 / 20 / 25 fps) and width (320 / 480 / 640 / 800 px). Height follows the source. |
-| **Report** | Inspect | A verdict — *Native resolution* or *Likely upscaled* — then resolution, class, codec, frame rate, bitrate and sharpness. |
-| **Saved / Downloading** | all download tools | Live progress with speed and ETA, then the final path with *Show file*. Merging shows motion rather than a fake percentage, because there is no percentage to report at that stage. |
-| **GIF result** | after any download | Offers to turn the finished file into a GIF, then shows conversion progress and the output path. |
-| **Activity** | every tool | See below. |
+- **Pro Viewport Simulation**: 2-column studio layout featuring real-time motion playback, hotkey triggers, and corner radius styling (`0px Sharp` to `64px Pill`).
+- **Bézier Easing Curves**: Custom cubic-bezier graph editor with 1:1 SVG coordinate tracking, direct numeric inputs (`P1 X, Y`, `P2 X, Y`), and string curve paste/import (supports CSS, Framer, and Figma formats).
+- **100% Browser-Safe Triggers**: Zero-conflict triggers (`Middle Mouse Scroll Click`, `~ Tilde`, `Z`, `C`, `Caps Lock`, `F2`) so normal web clicks never trigger "Open in new tab" shortcuts.
+- **Toggle Mode & Hold Mode**: Choose between holding keys to zoom or single-tap toggle to interact with both hands free.
+- **Anti-Throttling Engine**: 120Hz DPI-aware cursor tracking and dual-driver canvas loop keeping 60 FPS GPU rendering active even when the window is hidden in background.
 
 ### 5. Activity log
 
