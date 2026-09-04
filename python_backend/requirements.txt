@@ -19,3 +19,7 @@ numpy==2.5.1
 # write_gif(logger=)), which does not exist in 1.x — do not relax this floor.
 moviepy==2.2.1
 proglog==0.1.12
+
+# Packaging
+pyinstaller>=6.12.0
+

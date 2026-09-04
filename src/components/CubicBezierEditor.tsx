@@ -54,7 +54,9 @@ export function resolveCurveName(curve: BezierCurve): string {
         }
       }
     }
-  } catch {}
+  } catch {
+    // Ignore invalid JSON in localStorage
+  }
 
   return `Custom (${x1.toFixed(2)}, ${y1.toFixed(2)})`
 }
@@ -130,12 +132,9 @@ export function CubicBezierEditor({ value, onChange }: CubicBezierEditorProps) {
   }
 
   const handleCopy = (format: 'css' | 'array') => {
-    let text = ''
-    if (format === 'css') {
-      text = `cubic-bezier(${x1}, ${y1}, ${x2}, ${y2})`
-    } else {
-      text = `[${x1}, ${y1}, ${x2}, ${y2}]`
-    }
+    const text = format === 'css'
+      ? `cubic-bezier(${x1}, ${y1}, ${x2}, ${y2})`
+      : `[${x1}, ${y1}, ${x2}, ${y2}]`
     navigator.clipboard.writeText(text)
     setCopiedFormat(format)
     setTimeout(() => setCopiedFormat(null), 1800)

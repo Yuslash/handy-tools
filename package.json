@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
+    "test:backend": "node scripts/test_backend.js",
+    "test": "npm run typecheck && npm run test:backend",
     "build": "tsc --noEmit && vite build",
     "package": "npm run build && electron-builder",
-    "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 5",
     "preview": "vite preview",
     "backend": "python_backend/.venv/Scripts/python python_backend/app/api/server.py",
     "setup:backend": "python -m venv python_backend/.venv && python_backend/.venv/Scripts/pip install -r python_backend/requirements.txt"

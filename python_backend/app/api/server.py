@@ -400,10 +400,13 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
             if not download_ranges:
                 if format_id and format_id != 'bestvideo+bestaudio/best':
                     # Respect the chosen video stream, but keep audio MP4-safe.
-                    ydl_opts['format'] = (
-                        f'{format_id}+bestaudio[acodec^=mp4a]/'
-                        f'{format_id}+bestaudio/best'
-                    )
+                    if '+' in format_id or '/' in format_id:
+                        ydl_opts['format'] = format_id
+                    else:
+                        ydl_opts['format'] = (
+                            f'{format_id}+bestaudio[acodec^=mp4a]/'
+                            f'{format_id}+bestaudio/best'
+                        )
                 else:
                     ydl_opts['format'] = MP4_SAFE_FORMAT
 
@@ -504,6 +507,10 @@ async def run_download_with_events(url, format_id, audio_only, websocket, output
     print("[WS] Download function complete")
 
 if __name__ == "__main__":
+    if "--test" in sys.argv:
+        print(f"[Self-Test] Backend initialized successfully (FFmpeg: {FFMPEG_AVAILABLE}).")
+        sys.exit(0)
+
     import uvicorn
 
     # Electron passes BENCH_PORT so the two sides always agree on the port.

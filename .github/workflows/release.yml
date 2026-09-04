@@ -1,0 +1,152 @@
+name: CI/CD Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test, Build, and Release
+    if: github.event_name == 'workflow_dispatch' || (!contains(github.event.head_commit.message, '[skip ci]') && !startsWith(github.event.head_commit.message, 'chore(release):'))
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'python_backend/requirements.txt'
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r python_backend/requirements.txt
+
+      # ── 1. TEST PHASE ───────────────────────────────────────────────────────
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Python backend unit tests
+        run: npm run test:backend
+
+      # ── 2. AUTO-INCREASE VERSION ───────────────────────────────────────────
+      - name: Auto-increment patch version
+        id: version_bump
+        shell: pwsh
+        run: |
+          # Bump patch version in package.json and package-lock.json
+          npm version patch --no-git-tag-version
+          $newVersion = (Get-Content package.json | ConvertFrom-Json).version
+          Write-Host "Auto-incremented version to: $newVersion"
+          "NEW_VERSION=$newVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TAG_NAME=v$newVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # ── 3. BUILD BACKEND & APPLICATION ─────────────────────────────────────
+      - name: Build Python backend executable (PyInstaller)
+        shell: pwsh
+        run: |
+          Push-Location python_backend
+          pyinstaller backend.spec --noconfirm --distpath dist --workpath build
+          Pop-Location
+          if (-not (Test-Path "python_backend/dist/backend.exe")) {
+            Write-Error "PyInstaller failed: backend.exe was not created."
+            exit 1
+          }
+          $exeSize = [math]::Round((Get-Item "python_backend/dist/backend.exe").Length / 1MB, 2)
+          Write-Host "backend.exe built successfully. Size: $exeSize MB"
+
+      - name: Smoke test compiled backend.exe
+        shell: pwsh
+        run: |
+          Write-Host "Verifying compiled backend.exe executes cleanly..."
+          & "python_backend/dist/backend.exe" --test
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Compiled backend.exe failed self-test with code $LASTEXITCODE"
+            exit 1
+          }
+          Write-Host "Backend smoke test passed!"
+
+      - name: Build UI and compile Electron
+        run: npm run build
+
+      - name: Package Windows installer with electron-builder
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx electron-builder --win
+
+      # ── 4. VERIFY OUTPUT ────────────────────────────────────────────────────
+      - name: Verify build artifacts
+        shell: pwsh
+        run: |
+          $targetDir = "release/$env:NEW_VERSION"
+          Write-Host "Verifying release assets in $targetDir..."
+          if (-not (Test-Path $targetDir)) {
+            Write-Error "Output directory $targetDir does not exist."
+            exit 1
+          }
+          $installers = Get-ChildItem -Path $targetDir -Filter "*Setup*.exe"
+          if ($installers.Count -eq 0) {
+            Write-Error "No installer (*Setup*.exe) found in $targetDir."
+            exit 1
+          }
+          foreach ($item in (Get-ChildItem -Path $targetDir)) {
+            Write-Host "Artifact: $($item.Name) ($([math]::Round($item.Length / 1MB, 2)) MB)"
+          }
+
+      # ── 5. COMMIT VERSION BUMP & PUSH TAG ──────────────────────────────────
+      - name: Push version bump commit and tag
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          if (Test-Path package-lock.json) {
+            git add package-lock.json
+          }
+          git commit -m "chore(release): v$env:NEW_VERSION [skip ci]"
+          git tag "$env:TAG_NAME"
+          git pull --rebase origin main
+          git push origin main --follow-tags
+
+      # ── 6. PUBLISH GITHUB RELEASE ──────────────────────────────────────────
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: "Bench ${{ env.TAG_NAME }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release/${{ env.NEW_VERSION }}/*Setup*.exe
+            release/${{ env.NEW_VERSION }}/*.blockmap
+            release/${{ env.NEW_VERSION }}/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

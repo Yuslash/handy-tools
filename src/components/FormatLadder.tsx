@@ -64,6 +64,7 @@ interface Rung {
   formatId: string
   audioOnly: boolean
   tier: string
+  typeLabel: string
   codec: string
   ext: string
   size: number
@@ -93,10 +94,11 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
         formatId: f.acodec === 'none' ? `${f.id}+bestaudio[acodec^=mp4a]/${f.id}+bestaudio/best` : f.id,
         audioOnly: false,
         tier: tierLabel(h),
+        typeLabel: 'Video + Audio',
         codec: shortCodec(f.vcodec),
         ext: f.ext,
         size: f.size || 0,
-        label: `${tierLabel(h)} ${shortCodec(f.vcodec)}`,
+        label: `${tierLabel(h)} (Video + Audio) · ${shortCodec(f.vcodec)}`,
       }))
 
     const bestAudio = formats
@@ -109,10 +111,11 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
           formatId: 'bestaudio/best',
           audioOnly: true,
           tier: 'Audio',
+          typeLabel: 'Audio only',
           codec: shortCodec(bestAudio.acodec),
           ext: ffmpegAvailable ? 'mp3' : bestAudio.ext,
           size: bestAudio.size || 0,
-          label: 'Audio only',
+          label: `Audio only · ${shortCodec(bestAudio.acodec)}`,
         }
       : null
 
@@ -140,7 +143,7 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
         aria-pressed={isSelected}
         style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
         className={cn(
-          'animate-rung-in group relative grid w-full grid-cols-[3.5rem_3rem_1fr_4.5rem] items-center gap-3',
+          'animate-rung-in group relative grid w-full grid-cols-[3.5rem_7.5rem_2.5rem_1fr_4.5rem] items-center gap-3',
           'rounded-md border px-3 py-2 text-left transition-colors duration-100',
           isSelected
             ? 'border-signal bg-signal/10'
@@ -154,6 +157,19 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
           )}
         >
           {rung.tier}
+        </span>
+
+        <span
+          className={cn(
+            'font-mono text-data tracking-tight truncate',
+            rung.audioOnly
+              ? 'text-ink-faint'
+              : isSelected
+                ? 'text-signal font-medium'
+                : 'text-ok font-medium',
+          )}
+        >
+          {rung.typeLabel}
         </span>
 
         <span className="font-mono text-data text-ink-faint">{rung.codec}</span>
@@ -179,7 +195,10 @@ export function FormatLadder({ formats, selected, onSelect, ffmpegAvailable }: P
   return (
     <div className="space-y-3">
       <div className="flex items-baseline justify-between">
-        <span className="label">Format</span>
+        <div className="flex items-baseline gap-2">
+          <span className="label">Format</span>
+          <span className="text-label text-ink-faint">· Video formats include audio</span>
+        </div>
         <span className="label">Bar length = file size</span>
       </div>
 

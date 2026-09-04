@@ -33,6 +33,7 @@ release
 python_backend/build
 python_backend/dist
 *.spec
+!python_backend/backend.spec
 .venv
 venv
 ENV

@@ -166,6 +166,31 @@ def _get_video_duration(file_path: str) -> float | None:
         return None
 
 
+def _get_video_dimensions(file_path: str) -> tuple[int, int] | None:
+    """Run ffprobe to get video width and height."""
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "csv=s=x:p=0",
+        file_path,
+    ]
+    try:
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        res = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo, timeout=10)
+        out = res.stdout.strip()
+        if out and 'x' in out:
+            parts = out.split('x')
+            return int(parts[0]), int(parts[1])
+    except Exception:
+        pass
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
@@ -188,7 +213,7 @@ class CropRequest(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@router.get("/stream_video")
+@router.api_route("/stream_video", methods=["GET", "HEAD"])
 async def stream_video(path: str):
     """
     Stream a local video file over HTTP with Range support so Chromium HTML5 <video>
@@ -278,7 +303,22 @@ async def crop_video(req: CropRequest):
     output_path    = _safe_output_path(source, "_cropped")
     total_duration = _get_video_duration(str(source))
 
-    crop_filter = f"crop={req.width}:{req.height}:{req.x}:{req.y}"
+    x, y, w, h = req.x, req.y, req.width, req.height
+    dims = _get_video_dimensions(str(source))
+    if dims:
+        vid_w, vid_h = dims
+        x = max(0, min(vid_w - 2, x))
+        y = max(0, min(vid_h - 2, y))
+        w = max(2, min(vid_w - x, w))
+        h = max(2, min(vid_h - y, h))
+
+    # libx264 (yuv420p) requires even dimensions
+    if w % 2 != 0:
+        w -= 1
+    if h % 2 != 0:
+        h -= 1
+
+    crop_filter = f"crop={w}:{h}:{x}:{y}"
     cmd = [
         ffmpeg, "-y",
         "-i", str(source),

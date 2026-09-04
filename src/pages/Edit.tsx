@@ -65,7 +65,7 @@ interface VState {
 
 const V0: VState = {
   duration: 0, currentTime: 0, playing: false,
-  muted: false, vw: 1920, vh: 1080, loaded: false,
+  muted: false, vw: 0, vh: 0, loaded: false,
 }
 
 function useVideo() {
@@ -74,12 +74,14 @@ function useVideo() {
 
   const onMeta = () => {
     const v = ref.current; if (!v) return
+    const w = v.videoWidth || 0
+    const h = v.videoHeight || 0
     set(p => ({
       ...p,
       duration: isFinite(v.duration) ? v.duration : 0,
-      vw: v.videoWidth  || 1920,
-      vh: v.videoHeight || 1080,
-      loaded: true,
+      vw: w,
+      vh: h,
+      loaded: Boolean(w && h),
     }))
   }
   const onTime = () => {
@@ -93,6 +95,7 @@ function useVideo() {
 
   const handlers = {
     onLoadedMetadata: onMeta,
+    onLoadedData:     onMeta,
     onTimeUpdate:     onTime,
     onPlay, onPause, onEnded,
     onVolumeChange:   onVolume,
@@ -497,16 +500,20 @@ function CropTab() {
   const valid   = wn > 0 && hn > 0
   const canRun  = Boolean(path?.trim()) && valid
 
-  // When video loads and no crop is set, default to the full frame.
-  const initDone = useRef(false)
-  useEffect(() => { initDone.current = false }, [path])
+  // When video dimensions are detected:
+  // If no crop is set, or if the stored crop is out of bounds for this video (e.g. from a previous file)
   useEffect(() => {
-    if (vs.vw > 0 && vs.vh > 0 && !initDone.current) {
-      initDone.current = true
-      if (!wn) setRef.current({ width: String(vs.vw) })
-      if (!hn) setRef.current({ height: String(vs.vh) })
+    if (vs.vw > 0 && vs.vh > 0) {
+      if (!wn || !hn || wn > vs.vw || hn > vs.vh || xn + wn > vs.vw || yn + hn > vs.vh) {
+        setRef.current({
+          x: '0',
+          y: '0',
+          width: String(vs.vw),
+          height: String(vs.vh),
+        })
+      }
     }
-  }, [vs.vw, vs.vh, wn, hn])
+  }, [vs.vw, vs.vh, path])
 
   const choose = async () => {
     const f = await window.bench.selectFile(); if (!f) return
@@ -516,7 +523,14 @@ function CropTab() {
   const reset = () => { clear(); op.reset() }
   const run   = () => {
     if (!canRun) return
-    op.runCrop({ file_path: path, x: xn, y: yn, width: wn, height: hn })
+    let rx = xn, ry = yn, rw = wn, rh = hn
+    if (vs.vw > 0 && vs.vh > 0) {
+      rx = Math.max(0, Math.min(vs.vw - 2, rx))
+      ry = Math.max(0, Math.min(vs.vh - 2, ry))
+      rw = Math.max(2, Math.min(vs.vw - rx, rw))
+      rh = Math.max(2, Math.min(vs.vh - ry, rh))
+    }
+    op.runCrop({ file_path: path, x: rx, y: ry, width: rw, height: rh })
   }
 
   // ── Crop drag ──────────────────────────────────────────────────────────────
@@ -529,16 +543,18 @@ function CropTab() {
   } | null>(null)
 
   // Live video dimensions for the drag handler
-  const liveVid = useRef({ vw: 1920, vh: 1080 })
+  const liveVid = useRef({ vw: 0, vh: 0 })
   liveVid.current = { vw: vs.vw, vh: vs.vh }
 
   const startDrag = (h: CH) => (e: RMouseEvent) => {
     e.preventDefault(); e.stopPropagation()
     const c = cRef.current; if (!c) return
     const cr = c.getBoundingClientRect()
+    const curVw = vs.vw || 1
+    const curVh = vs.vh || 1
     // Scale against actual displayed video dimensions inside letterbox
     const containerAspect = cr.width / cr.height
-    const videoAspect = (vs.vw || 1920) / (vs.vh || 1080)
+    const videoAspect = curVw / curVh
     let renderedW = cr.width, renderedH = cr.height
     if (videoAspect > containerAspect) {
       renderedH = cr.width / videoAspect
@@ -549,9 +565,9 @@ function CropTab() {
     drag.current = {
       h,
       mx0: e.clientX, my0: e.clientY,
-      r0: { x: xn, y: yn, w: wn || vs.vw, h: hn || vs.vh },
-      sx: (vs.vw || 1920) / renderedW,
-      sy: (vs.vh || 1080) / renderedH,
+      r0: { x: xn, y: yn, w: wn || curVw, h: hn || curVh },
+      sx: curVw / (renderedW || 1),
+      sy: curVh / (renderedH || 1),
     }
   }
 
@@ -563,6 +579,7 @@ function CropTab() {
       const dy = (e.clientY - d.my0) * d.sy
       const { h, r0: r } = d
       const { vw, vh } = liveVid.current
+      if (vw <= 0 || vh <= 0) return
       let nx = r.x, ny = r.y, nw = r.w, nh = r.h
 
       if (h === 'move') {
@@ -655,9 +672,7 @@ function CropTab() {
               className="relative flex h-80 w-full items-center justify-center overflow-hidden bg-black select-none"
             >
               {/* The actual video — preserves natural aspect ratio without stretching */}
-              <video
-                ref={vRef}
-                src={toVideoSrc(path)}
+              <video key={path} ref={vRef} src={toVideoSrc(path)}
                 className="h-full w-full object-contain pointer-events-none"
                 autoPlay loop muted playsInline
                 {...handlers}

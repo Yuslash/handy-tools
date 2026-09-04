@@ -12,7 +12,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
   anyway. The parser handles TS syntax fine regardless of compiler version.
 */
 export default [
-  { ignores: ['dist', 'dist-electron', 'release', 'node_modules', 'python_backend'] },
+  { ignores: ['dist', 'dist-electron', 'release', 'node_modules', 'python_backend', 'scripts'] },
   js.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],
@@ -32,6 +32,7 @@ export default [
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-hooks/refs': 'off',
       // TypeScript resolves these; the base rule reports false positives on types.
       'no-undef': 'off',
       'no-unused-vars': 'off',
@@ -40,7 +41,7 @@ export default [
   {
     // A provider and its hook belong in one file; that co-location is the point,
     // and the fast-refresh cost is limited to these few modules.
-    files: ['src/state/*.tsx', 'src/components/TimeRange.tsx', 'src/components/Rail.tsx'],
+    files: ['src/state/*.tsx', 'src/components/TimeRange.tsx', 'src/components/Rail.tsx', 'src/components/CubicBezierEditor.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
 ]

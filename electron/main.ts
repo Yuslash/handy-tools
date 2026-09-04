@@ -310,6 +310,46 @@ function createOverlayWindow(): BrowserWindow {
   return overlayWin
 }
 
+async function captureAllPreviews(w: BrowserWindow) {
+  const routes = [
+    { name: 'download', hash: '#/download' },
+    { name: 'clip', hash: '#/clip' },
+    { name: 'segment', hash: '#/segment' },
+    { name: 'inspect', hash: '#/inspect' },
+    { name: 'gif', hash: '#/gif' },
+    { name: 'edit', hash: '#/edit' },
+    { name: 'record', hash: '#/record' },
+  ]
+  const previewDir = path.join(process.env.APP_ROOT, 'preview')
+  if (!fs.existsSync(previewDir)) fs.mkdirSync(previewDir, { recursive: true })
+
+  await new Promise((r) => setTimeout(r, 3000))
+
+  for (const r of routes) {
+    await w.webContents.executeJavaScript(`window.location.hash = '${r.hash}'`)
+    await new Promise((res) => setTimeout(res, 1500))
+    const img = await w.webContents.capturePage()
+    fs.writeFileSync(path.join(previewDir, `${r.name}.png`), img.toPNG())
+    console.log(`[Preview Captured] ${r.name}.png`)
+  }
+
+  // Also capture Studio Modal
+  await w.webContents.executeJavaScript(`window.location.hash = '#/record'`)
+  await new Promise((res) => setTimeout(res, 1000))
+  await w.webContents.executeJavaScript(`
+    const btns = Array.from(document.querySelectorAll('button'));
+    const studioBtn = btns.find(b => b.textContent && b.textContent.includes('Configure & Preview Studio'));
+    if (studioBtn) studioBtn.click();
+  `)
+  await new Promise((res) => setTimeout(res, 1500))
+  const studioImg = await w.webContents.capturePage()
+  fs.writeFileSync(path.join(previewDir, 'zoom_studio.png'), studioImg.toPNG())
+  console.log('[Preview Captured] zoom_studio.png')
+
+  console.log('ALL PREVIEWS CAPTURED SUCCESSFULLY!')
+  setTimeout(() => app.quit(), 1000)
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -328,7 +368,12 @@ function createWindow() {
     },
   })
 
-  win.once('ready-to-show', () => win?.show())
+  win.once('ready-to-show', () => {
+    win?.show()
+    if (process.env.CAPTURE_PREVIEWS === 'true') {
+      captureAllPreviews(win!)
+    }
+  })
 
   win.webContents.on('did-finish-load', () => {
     // Replay status for a renderer that loaded after the backend settled.
